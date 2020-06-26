@@ -1,4 +1,5 @@
 extern crate tokio;
+use tokio::net::lookup_host;
 use tokio::net::UdpSocket;
 
 #[derive(Copy, Clone)]
@@ -15,11 +16,12 @@ struct SIP<'a> {
     allow: &'a str,
 }
 
-trait Merge {
+trait SipMessageAttributes {
     fn generate_sip(&self) -> String;
+    fn empty(&self) -> Self;
 }
 
-impl Merge for SIP<'_> {
+impl SipMessageAttributes for SIP<'_> {
     fn generate_sip(&self) -> String {
         let carrier = "\r\n";
         let msg = vec![
@@ -38,13 +40,28 @@ impl Merge for SIP<'_> {
 
         return msg.join(carrier);
     }
+    fn empty(&self) -> Self {
+        return SIP {
+            command: "",
+            content_length: "Content-Length:",
+            to: "To:",
+            from: "From:",
+            contact: "Contact:",
+            cseq: "CSeq:",
+            call_id: "Call-ID:",
+            via: "Via:",
+            user_agent: "User-Agent:",
+            allow: "Allow:",
+        };
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
     let username = "1615391830:441164961072";
-    let password = "****";
-    let sip_server = "****:5060";
+    let password = "E8GBxoC5RTnkBw3AaT+CzjtrYbE=";
+    let sip_server = "register.staging.cloudcall.com:5060";
+    let ips: Vec<std::net::IpAddr> = lookup_host(hostname).unwrap();
 
     let mut socket = UdpSocket::bind("0.0.0.0:5060").await.unwrap();
 
@@ -72,12 +89,28 @@ async fn main() -> Result<(), ()> {
     let (amt, src) = socket.recv_from(&mut buf).await.unwrap();
 
     socket
-    .send_to(command.generate_sip().as_bytes(), &sip_server)
-    .await
-    .unwrap();
+        .send_to(command.generate_sip().as_bytes(), &sip_server)
+        .await
+        .unwrap();
 
     let full_message = String::from_utf8_lossy(&buf);
+    parser(full_message.split_at(amt).0);
     println!("[{}] - {:?}", line!(), full_message.split_at(amt).0);
 
     Ok(())
+}
+
+fn parser(msg: &str) {
+    let carrier = "\r\n";
+    let v = msg.split(carrier);
+
+    for x in v {
+        println!("[{}] - {:?}", line!(), x);
+    }
+}
+
+macro_rules! set_value {
+    ($x:expr, $name:expr, $a:expr) => {{
+        $x.$name = $a;
+    }};
 }
