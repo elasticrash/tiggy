@@ -1,4 +1,6 @@
+extern crate md5;
 extern crate phf;
+extern crate rand;
 extern crate tokio;
 use phf::phf_map;
 use phf::Map;
@@ -34,6 +36,7 @@ trait SipMessageAttributes {
     fn generate_sip(&self) -> String;
     fn empty() -> Self;
     fn set_by_key(self: &mut Self, key: &str, value: &str);
+    fn generate_call_id() -> String;
 }
 
 impl SipMessageAttributes for SIP<'_> {
@@ -138,6 +141,9 @@ impl SipMessageAttributes for SIP<'_> {
             None => {}
         }
     }
+    fn generate_call_id() -> String {
+        return format!("{:x}", md5::compute(rand::random::<[u8; 16]>()));
+    }
 }
 
 #[tokio::main]
@@ -151,13 +157,13 @@ async fn main() -> Result<(), ()> {
     let mut socket = UdpSocket::bind("0.0.0.0:5060").await.unwrap();
 
     let command = SIP {
-        command: "REGISTER sip:192.168.137.8 SIP/2.0",
+        command: &format!("REGISTER sip:{} SIP/2.0", &ip),
         content_length: "Content-Length: 0",
-        to: "To: sip:1615391830:441164961072@192.168.137.8",
-        from: "From: sip:1615391830:441164961072@192.168.137.8",
-        contact: "Contact: sip:1615391830:441164961072@185.28.212.48;transport=UDP",
+        to: &format!("To: sip:{}@{}", &username, &ip),
+        from: &format!("From: sip:{}@{}", &username, &ip),
+        contact: &format!("Contact: sip:{}@{};transport=UDP", &username, &ip),
         cseq: "CSeq: 445 REGISTER",
-        call_id: "Call-ID: b6f928e6a981e32d24c98ee789575f09@192.168.137.8",
+        call_id: &format!("Call-ID:{}@{}", &SIP::generate_call_id(), &ip),
         via: "Via: SIP/2.0/UDP 185.28.212.48;transport=UDP;branch=57ffd673319367006160043a8bad5ab5",
         user_agent: "User-Agent: sippy 0.2.5",
         allow: "Allow: INVITE,CANCEL,BYE,MESSAGE",
