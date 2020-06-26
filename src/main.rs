@@ -1,8 +1,22 @@
+extern crate phf;
 extern crate tokio;
-use tokio::net::lookup_host;
+use phf::phf_map;
+use phf::Map;
 use tokio::net::UdpSocket;
 
-#[derive(Copy, Clone)]
+static MAP: Map<&'static str, &'static str> = phf_map! {
+      "Content-Length"=>"content_length",
+      "To"=>"to",
+      "From"=>"from",
+      "Contact"=>"contact",
+      "CSeq"=>"cseq",
+      "Call-ID"=>"call_id",
+      "Via"=>"via",
+      "User-Agent"=>"user_agent",
+      "Allow"=> "allow",
+};
+
+#[derive(Copy, Clone, Debug)]
 struct SIP<'a> {
     command: &'a str,
     content_length: &'a str,
@@ -18,7 +32,8 @@ struct SIP<'a> {
 
 trait SipMessageAttributes {
     fn generate_sip(&self) -> String;
-    fn empty(&self) -> Self;
+    fn empty() -> Self;
+    fn set_by_key(self: &mut Self, key: &str, value: &str);
 }
 
 impl SipMessageAttributes for SIP<'_> {
@@ -40,7 +55,7 @@ impl SipMessageAttributes for SIP<'_> {
 
         return msg.join(carrier);
     }
-    fn empty(&self) -> Self {
+    fn empty() -> Self {
         return SIP {
             command: "",
             content_length: "Content-Length:",
@@ -54,6 +69,75 @@ impl SipMessageAttributes for SIP<'_> {
             allow: "Allow:",
         };
     }
+    fn set_by_key<'a>(&mut self, key: &str, value: &str) {
+        match MAP.get(key).cloned() {
+            Some(data) => {
+                if data == "command" {
+                    self.command = Box::leak(
+                        format!("{}{}", self.command.clone().to_string(), value.to_string())
+                            .into_boxed_str(),
+                    );
+                }
+                if data == "content_length" {
+                    self.content_length = Box::leak(
+                        format!(
+                            "{}{}",
+                            self.content_length.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
+                    );
+                }
+                if data == "to" {
+                    self.to = Box::leak(
+                        format!("{}{}", self.to.clone().to_string(), value.to_string())
+                            .into_boxed_str(),
+                    );
+                }
+                if data == "from" {
+                    self.from = Box::leak(
+                        format!("{}{}", self.from.clone().to_string(), value.to_string())
+                            .into_boxed_str(),
+                    );
+                }
+                if data == "contact" {
+                    self.contact = Box::leak(
+                        format!("{}{}", self.contact.clone().to_string(), value.to_string())
+                            .into_boxed_str(),
+                    );
+                }
+                if data == "call_id" {
+                    self.call_id = Box::leak(
+                        format!("{}{}", self.call_id.clone().to_string(), value.to_string())
+                            .into_boxed_str(),
+                    );
+                }
+                if data == "via" {
+                    self.via = Box::leak(
+                        format!("{}{}", self.via.clone().to_string(), value.to_string())
+                            .into_boxed_str(),
+                    );
+                }
+                if data == "user_agent" {
+                    self.user_agent = Box::leak(
+                        format!(
+                            "{}{}",
+                            self.user_agent.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
+                    );
+                }
+                if data == "allow" {
+                    self.allow = Box::leak(
+                        format!("{}{}", self.allow.clone().to_string(), value.to_string())
+                            .into_boxed_str(),
+                    );
+                }
+            }
+            None => {}
+        }
+    }
 }
 
 #[tokio::main]
@@ -61,7 +145,8 @@ async fn main() -> Result<(), ()> {
     let username = "1615391830:441164961072";
     let password = "E8GBxoC5RTnkBw3AaT+CzjtrYbE=";
     let sip_server = "register.staging.cloudcall.com:5060";
-    let ips: Vec<std::net::IpAddr> = lookup_host(hostname).unwrap();
+    let ip = get_if_addrs::get_if_addrs().unwrap()[0].addr.ip();
+    println!("[{}] - {:?}", line!(), ip.to_string());
 
     let mut socket = UdpSocket::bind("0.0.0.0:5060").await.unwrap();
 
@@ -102,15 +187,17 @@ async fn main() -> Result<(), ()> {
 
 fn parser(msg: &str) {
     let carrier = "\r\n";
-    let v = msg.split(carrier);
+    let v: Vec<&str> = msg.split(carrier).collect();
+    let mut empty_sip = SIP::empty();
+    empty_sip.set_by_key("command", &v[0]);
 
-    for x in v {
-        println!("[{}] - {:?}", line!(), x);
+    for i in 1..v.len() {
+        let split: Vec<&str> = v[i].split(':').collect();
+        let key = split.first().unwrap();
+        let value = split.last().unwrap();
+
+        empty_sip.set_by_key(key, value);
     }
-}
 
-macro_rules! set_value {
-    ($x:expr, $name:expr, $a:expr) => {{
-        $x.$name = $a;
-    }};
+    println!("[{}] - {:?}", line!(), empty_sip);
 }

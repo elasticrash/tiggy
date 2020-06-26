@@ -8,5 +8,6 @@ edition = "2018"
 
 [dependencies]
 tokio = { version = "0.2.20", features = ["net", "macros", "time"] }
-dns-lookup = "1.0.3"
+get_if_addrs = "0.5.3"
+phf = { version = "0.8.0", features = ["macros"] }
 
