@@ -2,6 +2,7 @@ use phf::phf_map;
 use phf::Map;
 
 static MAP: Map<&'static str, &'static str> = phf_map! {
+    "Command"=>"command",
     "Content-Length"=>"content_length",
     "To"=>"to",
     "From"=>"from",
@@ -11,6 +12,8 @@ static MAP: Map<&'static str, &'static str> = phf_map! {
     "Via"=>"via",
     "User-Agent"=>"user_agent",
     "Allow"=> "allow",
+    "WWW-Authenticate"=> "www_authenticate",
+    "Authorization"=>"authorization"
 };
 
 #[derive(Copy, Clone, Debug)]
@@ -25,12 +28,36 @@ pub struct SIP<'a> {
     pub via: &'a str,
     pub user_agent: &'a str,
     pub allow: &'a str,
+    pub www_authenticate: &'a str,
+    pub authorization: &'a str,
+}
+
+pub struct WWWAuthenticate<'a> {
+    pub realm: &'a str,
+    pub nonce: &'a str,
+}
+
+impl<'a> Default for SIP<'a> {
+    fn default() -> SIP<'a> {
+        SIP {
+            command: "",
+            content_length: "",
+            to: "",
+            from: "",
+            contact: "",
+            cseq: "",
+            call_id: "",
+            via: "",
+            user_agent: "",
+            allow: "",
+            www_authenticate: "",
+            authorization: "",
+        }
+    }
 }
 
 pub trait SipMessageAttributes {
     fn generate_sip(&self) -> String;
-    fn empty() -> Self;
-    fn blank() -> Self;
     fn set_by_key(self: &mut Self, key: &str, value: &str);
     fn generate_call_id() -> String;
 }
@@ -49,38 +76,35 @@ impl SipMessageAttributes for SIP<'_> {
             self.via.to_string(),
             self.user_agent.to_string(),
             self.allow.to_string(),
+            self.www_authenticate.to_string(),
+            self.authorization.to_string(),
             carrier.to_string(),
         ];
 
-        return msg.join(carrier);
-    }
-    fn empty() -> Self {
-        return SIP {
-            command: "",
-            content_length: "Content-Length:",
-            to: "To:",
-            from: "From:",
-            contact: "Contact:",
-            cseq: "CSeq:",
-            call_id: "Call-ID:",
-            via: "Via:",
-            user_agent: "User-Agent:",
-            allow: "Allow:",
-        };
+        return msg
+            .into_iter()
+            .filter(|m| m != "")
+            .collect::<Vec<String>>()
+            .join(carrier);
     }
     fn set_by_key<'a>(&mut self, key: &str, value: &str) {
         match MAP.get(key).cloned() {
             Some(data) => {
                 if data == "command" {
                     self.command = Box::leak(
-                        format!("{}{}", self.command.clone().to_string(), value.to_string())
-                            .into_boxed_str(),
+                        format!(
+                            "{}{}",
+                            self.command.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
                     );
                 }
                 if data == "content_length" {
                     self.content_length = Box::leak(
                         format!(
-                            "{}{}",
+                            "{}:{}{}",
+                            key,
                             self.content_length.clone().to_string(),
                             value.to_string()
                         )
@@ -89,38 +113,75 @@ impl SipMessageAttributes for SIP<'_> {
                 }
                 if data == "to" {
                     self.to = Box::leak(
-                        format!("{}{}", self.to.clone().to_string(), value.to_string())
-                            .into_boxed_str(),
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.to.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
                     );
                 }
                 if data == "from" {
                     self.from = Box::leak(
-                        format!("{}{}", self.from.clone().to_string(), value.to_string())
-                            .into_boxed_str(),
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.from.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
                     );
                 }
                 if data == "contact" {
                     self.contact = Box::leak(
-                        format!("{}{}", self.contact.clone().to_string(), value.to_string())
-                            .into_boxed_str(),
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.contact.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
+                    );
+                }
+                if data == "cseq" {
+                    self.cseq = Box::leak(
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.cseq.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
                     );
                 }
                 if data == "call_id" {
                     self.call_id = Box::leak(
-                        format!("{}{}", self.call_id.clone().to_string(), value.to_string())
-                            .into_boxed_str(),
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.call_id.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
                     );
                 }
                 if data == "via" {
                     self.via = Box::leak(
-                        format!("{}{}", self.via.clone().to_string(), value.to_string())
-                            .into_boxed_str(),
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.via.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
                     );
                 }
                 if data == "user_agent" {
                     self.user_agent = Box::leak(
                         format!(
-                            "{}{}",
+                            "{}:{}{}",
+                            key,
                             self.user_agent.clone().to_string(),
                             value.to_string()
                         )
@@ -129,8 +190,35 @@ impl SipMessageAttributes for SIP<'_> {
                 }
                 if data == "allow" {
                     self.allow = Box::leak(
-                        format!("{}{}", self.allow.clone().to_string(), value.to_string())
-                            .into_boxed_str(),
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.allow.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
+                    );
+                }
+                if data == "www_authenticate" {
+                    self.www_authenticate = Box::leak(
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.www_authenticate.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
+                    );
+                }
+                if data == "authorization" {
+                    self.authorization = Box::leak(
+                        format!(
+                            "{}:{}{}",
+                            key,
+                            self.authorization.clone().to_string(),
+                            value.to_string()
+                        )
+                        .into_boxed_str(),
                     );
                 }
             }
@@ -139,19 +227,5 @@ impl SipMessageAttributes for SIP<'_> {
     }
     fn generate_call_id() -> String {
         return format!("{:x}", md5::compute(rand::random::<[u8; 16]>()));
-    }
-    fn blank() -> Self {
-        return SIP {
-            command: "",
-            content_length: "",
-            to: "",
-            from: "",
-            contact: "",
-            cseq: "",
-            call_id: "",
-            via: "",
-            user_agent: "",
-            allow: "",
-        };
     }
 }
