@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct JSONConfiguration {
     pub username: String,
     pub password: String,

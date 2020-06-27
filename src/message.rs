@@ -30,6 +30,7 @@ pub struct SIP<'a> {
 pub trait SipMessageAttributes {
     fn generate_sip(&self) -> String;
     fn empty() -> Self;
+    fn blank() -> Self;
     fn set_by_key(self: &mut Self, key: &str, value: &str);
     fn generate_call_id() -> String;
 }
@@ -138,5 +139,19 @@ impl SipMessageAttributes for SIP<'_> {
     }
     fn generate_call_id() -> String {
         return format!("{:x}", md5::compute(rand::random::<[u8; 16]>()));
+    }
+    fn blank() -> Self {
+        return SIP {
+            command: "",
+            content_length: "",
+            to: "",
+            from: "",
+            contact: "",
+            cseq: "",
+            call_id: "",
+            via: "",
+            user_agent: "",
+            allow: "",
+        };
     }
 }

@@ -4,8 +4,10 @@ extern crate rand;
 extern crate tokio;
 mod config;
 mod message;
+mod register;
 use crate::message::SipMessageAttributes;
 use crate::message::SIP;
+use crate::register::SipMessageRegister;
 use tokio::net::UdpSocket;
 
 #[tokio::main]
@@ -16,18 +18,8 @@ async fn main() -> Result<(), ()> {
 
     let mut socket = UdpSocket::bind("0.0.0.0:5060").await.unwrap();
 
-    let command = SIP {
-        command: &format!("REGISTER sip:{} SIP/2.0", &ip),
-        content_length: "Content-Length: 0",
-        to: &format!("To: sip:{}@{}", &conf.username, &ip),
-        from: &format!("From: sip:{}@{}", &conf.username, &ip),
-        contact: &format!("Contact: sip:{}@{};transport=UDP", &conf.username, &ip),
-        cseq: "CSeq: 445 REGISTER",
-        call_id: &format!("Call-ID:{}@{}", &SIP::generate_call_id(), &ip),
-        via: "Via: SIP/2.0/UDP 185.28.212.48;transport=UDP;branch=57ffd673319367006160043a8bad5ab5",
-        user_agent: "User-Agent: sippy 0.2.5",
-        allow: "Allow: INVITE,CANCEL,BYE,MESSAGE",
-    };
+    let blank = SIP::blank();
+    let command = blank.create_register_message(&conf.clone(), &ip.clone().to_string());
 
     println!("[{}] - {:?}", line!(), command.generate_sip());
 
