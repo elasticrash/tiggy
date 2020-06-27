@@ -148,9 +148,9 @@ impl SipMessageAttributes for SIP<'_> {
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
-    let username = "1615391830:441164961072";
-    let password = "E8GBxoC5RTnkBw3AaT+CzjtrYbE=";
-    let sip_server = "register.staging.cloudcall.com:5060";
+    let username = "";
+    let password = "";
+    let sip_server = "";
     let ip = get_if_addrs::get_if_addrs().unwrap()[0].addr.ip();
     println!("[{}] - {:?}", line!(), ip.to_string());
 
