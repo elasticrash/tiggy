@@ -1,6 +1,20 @@
 use phf::phf_map;
 use phf::Map;
 
+macro_rules! box_value {
+    ($input:expr, $key:expr , $value:expr) => {
+        Box::leak(
+            format!(
+                "{}:{}{}",
+                $key,
+                $input.clone().to_string(),
+                $value.to_string()
+            )
+            .into_boxed_str(),
+        )
+    };
+}
+
 static MAP: Map<&'static str, &'static str> = phf_map! {
     "Command"=>"command",
     "Content-Length"=>"content_length",
@@ -32,6 +46,7 @@ pub struct SIP<'a> {
     pub authorization: &'a str,
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct WWWAuthenticate<'a> {
     pub realm: &'a str,
     pub nonce: &'a str,
@@ -92,134 +107,42 @@ impl SipMessageAttributes for SIP<'_> {
             Some(data) => {
                 if data == "command" {
                     self.command = Box::leak(
-                        format!(
-                            "{}{}",
-                            self.command.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
+                        format!("{}{}", self.command.clone().to_string(), value.to_string())
+                            .into_boxed_str(),
                     );
                 }
                 if data == "content_length" {
-                    self.content_length = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.content_length.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.content_length = box_value!(self.content_length, key, value);
                 }
                 if data == "to" {
-                    self.to = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.to.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.to = box_value!(self.to, key, value);
                 }
                 if data == "from" {
-                    self.from = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.from.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.from = box_value!(self.from, key, value);
                 }
                 if data == "contact" {
-                    self.contact = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.contact.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.contact = box_value!(self.contact, key, value);
                 }
                 if data == "cseq" {
-                    self.cseq = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.cseq.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.cseq = box_value!(self.cseq, key, value);
                 }
                 if data == "call_id" {
-                    self.call_id = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.call_id.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.call_id = box_value!(self.call_id, key, value);
                 }
                 if data == "via" {
-                    self.via = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.via.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.via = box_value!(self.via, key, value);
                 }
                 if data == "user_agent" {
-                    self.user_agent = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.user_agent.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.user_agent = box_value!(self.user_agent, key, value)
                 }
                 if data == "allow" {
-                    self.allow = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.allow.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.allow = box_value!(self.allow, key, value);
                 }
                 if data == "www_authenticate" {
-                    self.www_authenticate = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.www_authenticate.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.www_authenticate = box_value!(self.www_authenticate, key, value);
                 }
                 if data == "authorization" {
-                    self.authorization = Box::leak(
-                        format!(
-                            "{}:{}{}",
-                            key,
-                            self.authorization.clone().to_string(),
-                            value.to_string()
-                        )
-                        .into_boxed_str(),
-                    );
+                    self.authorization = box_value!(self.authorization, key, value);
                 }
             }
             None => {}
