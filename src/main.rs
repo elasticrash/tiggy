@@ -34,14 +34,26 @@ async fn main() -> Result<(), ()> {
     let p_message_a = parser(r_message_a.split_at(amt).0);
     print_received(p_message_a.generate_sip());
 
-    let r_message_v = r_message_init.add_auth(
+    let www_auth_body = p_message_a.www_authenticate.split(':').last();
+    let www_auth_parts: Vec<&str> = www_auth_body.unwrap().split(',').collect();
+    let nonce: &str = www_auth_parts[1]
+        .split('=')
+        .last()
+        .unwrap()
+        .split('\"')
+        .collect::<Vec<&str>>()[1];
+
+    println!("[{}] - {:?}", line!(), nonce);
+
+    let mut r_message_v = r_message_init.add_auth(
         &conf.username,
         &conf.password,
+        "sip:192.168.137.1",
         "192.168.137.1",
-        "192.168.137.1",
-        "XvfY6l731757Fsksp7/32wCbTt8JeT1h",
+        nonce,
         "3",
     );
+    r_message_v.cseq = "CSeq:3 REGISTER";
     print_send(r_message_v.generate_sip());
     socket
         .send_to(r_message_v.generate_sip().as_bytes(), &conf.sip_server)
