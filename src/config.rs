@@ -8,6 +8,7 @@ pub struct JSONConfiguration {
     pub username: String,
     pub password: String,
     pub sip_server: String,
+    pub extension: String,
 }
 
 pub fn read(filename: &str) -> serde_json::Result<JSONConfiguration> {

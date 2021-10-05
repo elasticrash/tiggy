@@ -1,74 +1,160 @@
 use crate::config::JSONConfiguration;
-use crate::message::SipMessageAttributes;
-use crate::message::SIP;
+use crate::models::SIP;
+use rsip::{
+    headers::{auth, CallId, UntypedHeader},
+    message::{HeadersExt},
+    Header, SipMessage,
+};
+use uuid::Uuid;
 
 pub trait SipMessageRegister {
-    fn create_register_message(&mut self, conf: &JSONConfiguration, ip: &String) -> Self;
-    fn add_auth(
+    fn generate_register_request(
         &mut self,
-        user: &str,
-        pass: &str,
-        realm: &str,
-        uri: &str,
-        nonce: &str,
-        nc: &str,
-    ) -> Self;
+        conf: &JSONConfiguration,
+        ip: &String,
+    ) -> rsip::SipMessage;
+    fn add_authentication(
+        &mut self,
+        sip: rsip::Request,
+        conf: &JSONConfiguration,
+        ip: &String,
+    ) -> rsip::SipMessage;
 }
 
-impl SipMessageRegister for SIP<'_> {
-    fn create_register_message(&mut self, conf: &JSONConfiguration, ip: &String) -> Self {
-        self.command = Box::leak(format!("REGISTER sip:{} SIP/2.0", ip).into_boxed_str());
-        self.content_length = "Content-Length: 0";
-        self.to = Box::leak(format!("To:sip:{}@{}", conf.username, ip).into_boxed_str());
-        self.from = Box::leak(format!("From:sip:{}@{}", conf.username, ip).into_boxed_str());
-        self.contact = Box::leak(
-            format!("Contact:sip:{}@{};transport=UDP", conf.username, ip).into_boxed_str(),
-        );
-        self.cseq = "CSeq:1 REGISTER";
-        self.call_id =
-            Box::leak(format!("Call-ID:{}@{}", &SIP::generate_call_id(), ip).into_boxed_str());
-        self.via =
-            "Via:SIP/2.0/UDP 185.28.212.48;transport=UDP;branch=57ffd673319367006160043a8bad5ab5";
-        self.user_agent = "User-Agent:sippy 0.2.5";
-        self.allow = "Allow:INVITE,CANCEL,BYE,MESSAGE";
+impl SipMessageRegister for SIP {
+    fn generate_register_request(&mut self, conf: &JSONConfiguration, ip: &String) -> SipMessage {
+        let mut headers: rsip::Headers = Default::default();
 
-        return *self;
+        let base_uri = rsip::Uri {
+            auth: None,
+            host_with_port: rsip::Domain::from(format!(
+                "sip:{}@{}:5060",
+                &conf.extension, &conf.sip_server
+            ))
+            .into(),
+            ..Default::default()
+        };
+
+        headers.push(
+            rsip::typed::Via {
+                version: rsip::Version::V2,
+                transport: rsip::Transport::Udp,
+                uri: rsip::Uri {
+                    host_with_port: (rsip::Domain::from(format!("{}:5060", ip))).into(),
+                    ..Default::default()
+                },
+                params: vec![rsip::Param::Branch(rsip::param::Branch::new(
+                    "z9hG4bKnashds7",
+                ))],
+            }
+            .into(),
+        );
+        headers.push(
+            rsip::typed::From {
+                display_name: Some(format!("{}", conf.username.to_string(),)),
+                uri: base_uri.clone(),
+                params: vec![rsip::Param::Tag(rsip::param::Tag::new("a73kszlfl"))],
+            }
+            .into(),
+        );
+        headers.push(rsip::headers::MaxForwards::from(70).into());
+        headers.push(
+            rsip::typed::To {
+                display_name: Some(format!("{}", conf.username.to_string(),)),
+                uri: base_uri.clone(),
+                params: Default::default(),
+            }
+            .into(),
+        );
+        headers.push(
+            Header::CallId(CallId::new(format!("{}@sippy", Uuid::new_v4().to_string()))).into(),
+        );
+        headers.push(
+            rsip::typed::CSeq {
+                seq: 1,
+                method: rsip::Method::Register,
+            }
+            .into(),
+        );
+
+        headers.push(
+            rsip::typed::Contact {
+                display_name: Some(format!("{}", conf.username.to_string(),)),
+                uri: base_uri,
+                params: Default::default(),
+            }
+            .into(),
+        );
+        headers.push(rsip::headers::ContentLength::default().into());
+        headers.push(rsip::headers::Allow::default().into());
+
+        rsip::Request {
+            method: rsip::Method::Register,
+            uri: rsip::Uri {
+                scheme: Some(rsip::Scheme::Sip),
+                host_with_port: rsip::Domain::from(format!("{}:5060", &conf.sip_server)).into(),
+                ..Default::default()
+            },
+            version: rsip::Version::V2,
+            headers: headers,
+            body: Default::default(),
+        }
+        .into()
     }
-    fn add_auth(
+    fn add_authentication(
         &mut self,
-        user: &str,
-        pass: &str,
-        realm: &str,
-        uri: &str,
-        nonce: &str,
-        nc: &str,
-    ) -> Self {
-        let ha1 = md5::compute(&format!("{}:{}:{}", user, realm, pass));
-        let ha2 = md5::compute(format!("REGISTER:{}", uri));
-        let digest = format!(
-            "{:x}:{}:{:08}:{:x}:auth:{:x}",
-            ha1,
-            nonce,
-            nc,
-            generate_cnonce(),
-            ha2
-        );
-        let pass = md5::compute(digest);
+        previous: rsip::Request,
+        conf: &JSONConfiguration,
+        ip: &String,
+    ) -> rsip::SipMessage {
+        let mut headers: rsip::Headers = Default::default();
+        headers.push(previous.via_header().unwrap().clone().into());
+        headers.push(previous.max_forwards_header().unwrap().clone().into());
+        headers.push(previous.from_header().unwrap().clone().into());
+        headers.push(previous.to_header().unwrap().clone().into());
+        headers.push(previous.contact_header().unwrap().clone().into());
+        headers.push(previous.call_id_header().unwrap().clone().into());
 
-        self.set_by_key(
-            "Authorization",
-            Box::leak(
-                format!(
-                    "Digest username={}, realm={}, nonce={}, uri={}, algorithm=MD5, response={:x}",
-                    user, realm, nonce, uri, pass
-                )
-                .into_boxed_str(),
-            ),
+        headers.push(
+            rsip::typed::CSeq {
+                seq: 2,
+                method: rsip::Method::Register,
+            }
+            .into(),
         );
-        return *self;
+        headers.push(
+            rsip::typed::Authorization {
+                scheme: auth::Scheme::Digest,
+                username: conf.username.to_string(),
+                realm: format!("{}", conf.sip_server),
+                nonce: "YVv5M2Fb+AdIPO8TrN6PYtIuEJ4E4kiA".to_string(),
+                uri: rsip::Uri {
+                    scheme: Some(rsip::Scheme::Sip),
+                    host_with_port: rsip::Domain::from(format!("sip:{}:5060", &conf.sip_server))
+                        .into(),
+                    ..Default::default()
+                },
+                response: "asdfsfs".to_string(),
+                algorithm: Some(auth::Algorithm::Md5),
+                opaque: None,
+                qop: None,
+            }
+            .into(),
+        );
+        headers.push(rsip::headers::ContentLength::default().into());
+        headers.push(rsip::headers::Allow::default().into());
+
+        rsip::Request {
+            method: rsip::Method::Register,
+            uri: rsip::Uri {
+                scheme: Some(rsip::Scheme::Sip),
+                host_with_port: rsip::Domain::from(format!("{}:5060", &conf.sip_server)).into(),
+                ..Default::default()
+            },
+            version: rsip::Version::V2,
+            headers: headers,
+            body: Default::default(),
+        }
+        .into()
     }
-}
-
-fn generate_cnonce() -> md5::Digest {
-    md5::compute(rand::random::<[u8; 16]>())
 }

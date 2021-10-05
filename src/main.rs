@@ -3,94 +3,75 @@ extern crate phf;
 extern crate rand;
 extern crate tokio;
 mod config;
-mod message;
+mod models;
 mod register;
-use crate::message::SipMessageAttributes;
-use crate::message::SIP;
-use crate::register::SipMessageRegister;
+use std::{convert::TryInto, thread, time::Duration};
+
+use config::JSONConfiguration;
 use tokio::net::UdpSocket;
+
+use crate::{models::SIP, register::SipMessageRegister};
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
     let conf = config::read("./config.json").unwrap();
     let ip = get_if_addrs::get_if_addrs().unwrap()[0].addr.ip();
     println!("[{}] - {:?}", line!(), ip.to_string());
+    let mut buffer = [0 as u8; 65535];
 
     let mut socket = UdpSocket::bind("0.0.0.0:5060").await.unwrap();
 
-    let mut blank = SIP::default();
-    let mut r_message_init = blank.create_register_message(&conf.clone(), &ip.clone().to_string());
+    let mut blank = SIP {
+        history: Vec::new(),
+    };
+    let r1_message_init = blank.generate_register_request(&conf.clone(), &ip.clone().to_string());
 
-    print_send(r_message_init.generate_sip());
-    socket
-        .send_to(r_message_init.generate_sip().as_bytes(), &conf.sip_server)
-        .await
-        .unwrap();
-
-    let mut buf = [0; 65535];
-    let (amt, src) = socket.recv_from(&mut buf).await.unwrap();
-
-    let r_message_a = String::from_utf8_lossy(&buf);
-    let p_message_a = parser(r_message_a.split_at(amt).0);
-    print_received(p_message_a.generate_sip());
-
-    let www_auth_body = p_message_a.www_authenticate.split(':').last();
-    let www_auth_parts: Vec<&str> = www_auth_body.unwrap().split(',').collect();
-    let nonce: &str = www_auth_parts[1]
-        .split('=')
-        .last()
-        .unwrap()
-        .split('\"')
-        .collect::<Vec<&str>>()[1];
-
-    println!("[{}] - {:?}", line!(), nonce);
-
-    let mut r_message_v = r_message_init.add_auth(
-        &conf.username,
-        &conf.password,
-        "sip:192.168.137.1",
-        "192.168.137.1",
-        nonce,
-        "3",
+    send_and_receive(&conf.clone(), r1_message_init.to_string(), &mut socket, &mut buffer).await;
+    let r2_message_init = blank.add_authentication(
+        r1_message_init.try_into().unwrap(),
+        &conf.clone(),
+        &ip.clone().to_string(),
     );
-    r_message_v.cseq = "CSeq:3 REGISTER";
-    print_send(r_message_v.generate_sip());
-    socket
-        .send_to(r_message_v.generate_sip().as_bytes(), &conf.sip_server)
-        .await
-        .unwrap();
-
-    let (amt, src) = socket.recv_from(&mut buf).await.unwrap();
-
-    let r_message_b = String::from_utf8_lossy(&buf);
-    let p_message_b = parser(r_message_b.split_at(amt).0);
-    print_received(p_message_b.generate_sip());
-
+    send_and_receive(&conf.clone(), r2_message_init.to_string(), &mut socket, &mut buffer).await;
+    thread::sleep(Duration::from_secs(1));
+    receive(&mut socket, &mut buffer).await;
     Ok(())
 }
 
-fn parser(msg: &str) -> SIP {
-    let carrier = "\r\n";
-    let v: Vec<&str> = msg.split(carrier).collect();
-    let mut new_sip = SIP::default();
-    new_sip.set_by_key("Command", &v[0]);
+async fn send_and_receive(conf: &JSONConfiguration, msg: String, socket: &mut UdpSocket, buffer: &mut [u8; 65535]) {
+    print_send();
+    print_msg(msg.clone());
 
-    for i in 1..v.len() {
-        let split: Vec<&str> = v[i].split(':').collect();
-        let key = split.first().unwrap();
-        let value = split.last().unwrap();
-        new_sip.set_by_key(key, value);
-    }
-
-    return new_sip;
+    socket
+        .send_to(msg.as_bytes(), format!("{}:5060", &conf.sip_server))
+        .await
+        .unwrap();
+    print_received();
+    let (amt, src) = socket.recv_from(buffer).await.unwrap();
+    let slice = &mut buffer[..amt];
+    let r_message_a = String::from_utf8_lossy(&slice);
+    print_msg(r_message_a.to_string());
+    //TODO: parse and return response
 }
 
-fn print_send(msg: String) {
+async fn receive(socket: &mut UdpSocket, buffer: &mut [u8; 65535]){
+    let (amt, src) = socket.recv_from(buffer).await.unwrap();
+    let slice = &mut buffer[..amt];
+    let r_message_a = String::from_utf8_lossy(&slice);
+    print_msg(r_message_a.to_string());
+}
+
+fn print_send() {
     println!("[{}] - {:?}", line!(), ">>>>>>>>>>>>>");
-    println!("[{}] - {:?}", line!(), msg);
 }
 
-fn print_received(msg: String) {
+fn print_received() {
     println!("[{}] - {:?}", line!(), "<<<<<<<<<<<<<");
-    println!("[{}] - {:?}", line!(), msg);
+}
+
+fn print_msg(msg: String) {
+    let print = msg.split("\r\n");
+    for line in print {
+        println!("[{}] - {:?}", line!(), line);
+    }
 }
