@@ -1,8 +1,9 @@
 use crate::config::JSONConfiguration;
 use crate::models::SIP;
 use rsip::{
-    headers::{auth, CallId, UntypedHeader},
-    message::{HeadersExt},
+    headers::{auth, Authorization, CallId, UntypedHeader, UserAgent},
+    message::HeadersExt,
+    typed::WwwAuthenticate,
     Header, SipMessage,
 };
 use uuid::Uuid;
@@ -15,9 +16,8 @@ pub trait SipMessageRegister {
     ) -> rsip::SipMessage;
     fn add_authentication(
         &mut self,
-        sip: rsip::Request,
         conf: &JSONConfiguration,
-        ip: &String,
+        auth: &WwwAuthenticate,
     ) -> rsip::SipMessage;
 }
 
@@ -28,8 +28,8 @@ impl SipMessageRegister for SIP {
         let base_uri = rsip::Uri {
             auth: None,
             host_with_port: rsip::Domain::from(format!(
-                "sip:{}@{}:5060",
-                &conf.extension, &conf.sip_server
+                "sip:{}@{}:{}",
+                &conf.extension, &conf.sip_server, &conf.sip_port
             ))
             .into(),
             ..Default::default()
@@ -40,7 +40,7 @@ impl SipMessageRegister for SIP {
                 version: rsip::Version::V2,
                 transport: rsip::Transport::Udp,
                 uri: rsip::Uri {
-                    host_with_port: (rsip::Domain::from(format!("{}:5060", ip))).into(),
+                    host_with_port: (rsip::Domain::from(format!("{}:{}", ip, &conf.sip_port))).into(),
                     ..Default::default()
                 },
                 params: vec![rsip::Param::Branch(rsip::param::Branch::new(
@@ -87,27 +87,53 @@ impl SipMessageRegister for SIP {
         );
         headers.push(rsip::headers::ContentLength::default().into());
         headers.push(rsip::headers::Allow::default().into());
+        headers.push(Header::UserAgent(UserAgent::new("Sippy")).into());
 
-        rsip::Request {
+        let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
-                host_with_port: rsip::Domain::from(format!("{}:5060", &conf.sip_server)).into(),
+                host_with_port: rsip::Domain::from(format!("{}:{}", &conf.sip_server, &conf.sip_port)).into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,
             headers: headers,
             body: Default::default(),
         }
-        .into()
+        .into();
+
+        self.history.push(request.clone());
+
+        request
     }
     fn add_authentication(
         &mut self,
-        previous: rsip::Request,
         conf: &JSONConfiguration,
-        ip: &String,
+        auth: &WwwAuthenticate,
     ) -> rsip::SipMessage {
+        // HA1=MD5(username:realm:password)
+        // HA2=MD5(method:digestURI)
+        // response=MD5(HA1:nonce:HA2)
+
+        let ha1 = format!("{}:{}:{}", conf.username, auth.realm, conf.password);
+        let ha2 = format!(
+            "{}:sip:{}@{}:{}",
+            "REGISTER".to_string(),
+            conf.extension,
+            conf.sip_server,
+            conf.sip_port
+        );
+
+        let cmd5 = format!(
+            "{:x}:{}:{:x}",
+            md5::compute(ha1),
+            auth.nonce,
+            md5::compute(ha2)
+        );
+        let md5 = format!("{:x}", md5::compute(cmd5));
+
         let mut headers: rsip::Headers = Default::default();
+        let previous = self.history.last().unwrap();
         headers.push(previous.via_header().unwrap().clone().into());
         headers.push(previous.max_forwards_header().unwrap().clone().into());
         headers.push(previous.from_header().unwrap().clone().into());
@@ -127,14 +153,17 @@ impl SipMessageRegister for SIP {
                 scheme: auth::Scheme::Digest,
                 username: conf.username.to_string(),
                 realm: format!("{}", conf.sip_server),
-                nonce: "YVv5M2Fb+AdIPO8TrN6PYtIuEJ4E4kiA".to_string(),
+                nonce: auth.clone().nonce,
                 uri: rsip::Uri {
                     scheme: Some(rsip::Scheme::Sip),
-                    host_with_port: rsip::Domain::from(format!("sip:{}:5060", &conf.sip_server))
-                        .into(),
+                    host_with_port: rsip::Domain::from(format!(
+                        "{}@{}:{}",
+                        &conf.extension, &conf.sip_server, &conf.sip_port
+                    ))
+                    .into(),
                     ..Default::default()
                 },
-                response: "asdfsfs".to_string(),
+                response: md5.to_string(),
                 algorithm: Some(auth::Algorithm::Md5),
                 opaque: None,
                 qop: None,
@@ -144,17 +173,25 @@ impl SipMessageRegister for SIP {
         headers.push(rsip::headers::ContentLength::default().into());
         headers.push(rsip::headers::Allow::default().into());
 
-        rsip::Request {
+        let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
-                host_with_port: rsip::Domain::from(format!("{}:5060", &conf.sip_server)).into(),
+                host_with_port: rsip::Domain::from(format!(
+                    "{}:{}",
+                    &conf.sip_server, &conf.sip_port
+                ))
+                .into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,
             headers: headers,
             body: Default::default(),
         }
-        .into()
+        .into();
+
+        self.history.push(request.clone());
+
+        request
     }
 }

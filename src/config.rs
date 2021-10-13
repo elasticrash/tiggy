@@ -8,6 +8,7 @@ pub struct JSONConfiguration {
     pub username: String,
     pub password: String,
     pub sip_server: String,
+    pub sip_port: u16,
     pub extension: String,
 }
 
