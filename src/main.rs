@@ -1,20 +1,22 @@
 extern crate md5;
 extern crate phf;
 extern crate rand;
+mod composer;
 mod config;
 mod models;
-mod register;
 use std::{convert::TryFrom, thread, time::Duration};
 
 use config::JSONConfiguration;
-use rsip::{
-    header_opt,
-    message::{request, HasHeaders},
-    Header, Request, Response, SipMessage, StatusCode,
-};
+use rsip::{header_opt, message::HasHeaders, Header, Request, Response, SipMessage, StatusCode};
 use std::net::UdpSocket;
 
-use crate::{models::SIP, register::SipMessageRegister};
+use crate::{
+    composer::{
+        request::{authorized_register_request, unauthorized_register_request},
+        response::ok,
+    },
+    models::SIP,
+};
 
 macro_rules! skip_fail {
     ($res:expr) => {
@@ -35,16 +37,18 @@ fn main() {
     let mut buffer = [0 as u8; 65535];
 
     let mut socket = UdpSocket::bind("0.0.0.0:5060").unwrap();
-    socket.set_read_timeout(Some(Duration::new(1, 0)));
+    let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
 
     socket
         .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
         .expect("connect function failed");
 
-    let mut blank = SIP {
+    let mut dialog = SIP {
         history: Vec::new(),
     };
-    let register_cseq_1 = blank.generate_register_request(&conf.clone(), &ip.clone().to_string());
+
+    let register_cseq_1 = unauthorized_register_request(&conf.clone(), &ip.clone().to_string());
+    dialog.history.push(register_cseq_1.clone());
 
     send(&conf.clone(), register_cseq_1.to_string(), &mut socket);
 
@@ -64,13 +68,12 @@ fn main() {
                                 .unwrap();
                         send(
                             &conf,
-                            blank
-                                .add_authentication(
-                                    &conf,
-                                    &rsip::typed::WwwAuthenticate::try_from(www_auth.clone())
-                                        .unwrap(),
-                                )
-                                .to_string(),
+                            authorized_register_request(
+                                &dialog.history.last().unwrap(),
+                                &conf,
+                                &rsip::typed::WwwAuthenticate::try_from(www_auth.clone()).unwrap(),
+                            )
+                            .to_string(),
                             &mut socket,
                         );
                     }
@@ -87,7 +90,13 @@ fn main() {
                     rsip::Method::Bye => {}
                     rsip::Method::Cancel => {}
                     rsip::Method::Info => {}
-                    rsip::Method::Invite => {}
+                    rsip::Method::Invite => {
+                        send(
+                            &conf,
+                            ok(&conf, &ip.clone().to_string()).to_string(),
+                            &mut socket,
+                        );
+                    }
                     rsip::Method::Message => {}
                     rsip::Method::Notify => {}
                     rsip::Method::Options => {}
@@ -100,7 +109,6 @@ fn main() {
             }
         }
         count += 1;
-        println!("[{}] - {:?}", line!(), "--keep-alive--");
         if count == 1800 {
             break;
         }
@@ -135,7 +143,7 @@ fn peek(socket: &mut UdpSocket, buffer: &mut [u8]) -> usize {
     println!("[{}] - {:?}", line!(), "--O^O--");
     match socket.peek(buffer) {
         Ok(received) => received,
-        Err(e) => {
+        Err(_e) => {
             println!("[{}] --stream-is-empty--", line!());
             0
         }
