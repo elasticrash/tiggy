@@ -242,6 +242,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ee1c47aaa256ecabcaea351eae4a9b01ef39ed810004e298d2511ed284b1525"
 
 [[package]]
+name = "minimal-lexical"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
 name = "nom"
 version = "6.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -252,6 +258,17 @@ dependencies = [
  "lexical-core",
  "memchr",
  "regex",
+ "version_check",
+]
+
+[[package]]
+name = "nom"
+version = "7.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b1d11e1ef389c76fe5b81bcaf2ea32cf88b62bc494e19f493d0b30e7a930109"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
  "version_check",
 ]
 
@@ -412,12 +429,11 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "rsip"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bd4ff21ce91f26ac08c9708a61c890c2da540c554b376a4329a58f7caed4d19"
+source = "git+https://github.com/vasilakisfil/rsip.git#2fe950a63145342e1b07435e26260cb0d1d3ba1e"
 dependencies = [
  "bytes",
  "md-5",
- "nom",
+ "nom 6.2.1",
  "rsip-derives",
  "sha2",
  "uuid",
@@ -426,8 +442,7 @@ dependencies = [
 [[package]]
 name = "rsip-derives"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "096fa1849a1f0edbb6cba69f45b96623446f872a88f26b98053513d5394c8601"
+source = "git+https://github.com/vasilakisfil/rsip.git#2fe950a63145342e1b07435e26260cb0d1d3ba1e"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -497,6 +512,7 @@ version = "0.1.0"
 dependencies = [
  "get_if_addrs",
  "md5",
+ "nom 7.1.0",
  "phf",
  "rand",
  "rsip",

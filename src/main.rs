@@ -6,14 +6,20 @@ mod config;
 mod models;
 use std::{convert::TryFrom, thread, time::Duration};
 
-use config::JSONConfiguration;
-use rsip::{header_opt, message::HasHeaders, Header, Request, Response, SipMessage, StatusCode};
+use models::SocketV4;
+use rsip::{
+    header_opt,
+    headers::ToTypedHeader,
+    message::{HasHeaders, HeadersExt},
+    typed::Via,
+    Header, Request, Response, SipMessage, StatusCode,
+};
 use std::net::UdpSocket;
 
 use crate::{
     composer::{
         request::{authorized_register_request, unauthorized_register_request},
-        response::ok,
+        response::{ok, simple_ok, trying},
     },
     models::SIP,
 };
@@ -50,13 +56,19 @@ fn main() {
     let register_cseq_1 = unauthorized_register_request(&conf.clone(), &ip.clone().to_string());
     dialog.history.push(register_cseq_1.clone());
 
-    send(&conf.clone(), register_cseq_1.to_string(), &mut socket);
+    send(
+        &SocketV4 {
+            ip: conf.clone().sip_server,
+            port: conf.clone().sip_port,
+        },
+        register_cseq_1.to_string(),
+        &mut socket,
+    );
 
     let mut count: i32 = 0;
 
     loop {
         let packet_size = peek(&mut socket, &mut buffer);
-        thread::sleep(Duration::from_secs(3));
         if packet_size > 0 {
             let msg = skip_fail!(receive(&mut socket, &mut buffer));
             if msg.is_response() {
@@ -67,7 +79,10 @@ fn main() {
                             header_opt!(response.headers().iter(), Header::WwwAuthenticate)
                                 .unwrap();
                         send(
-                            &conf,
+                            &SocketV4 {
+                                ip: conf.clone().sip_server,
+                                port: conf.clone().sip_port,
+                            },
                             authorized_register_request(
                                 &dialog.history.last().unwrap(),
                                 &conf,
@@ -83,23 +98,54 @@ fn main() {
                 }
             } else {
                 let request = Request::try_from(msg.clone()).unwrap();
+                let via: Via = request.via_header().unwrap().typed().unwrap();
 
-                match request.method {
+                match request.clone().method {
                     rsip::Method::Register => {}
                     rsip::Method::Ack => {}
-                    rsip::Method::Bye => {}
+                    rsip::Method::Bye => {
+                        send(
+                            &SocketV4 {
+                                ip: via.uri.host().to_string(),
+                                port: 5060,
+                            },
+                            simple_ok(&conf, &ip.clone().to_string(), &request, rsip::Method::Bye).to_string(),
+                            &mut socket,
+                        );
+                    }
                     rsip::Method::Cancel => {}
                     rsip::Method::Info => {}
                     rsip::Method::Invite => {
                         send(
-                            &conf,
-                            ok(&conf, &ip.clone().to_string()).to_string(),
+                            &SocketV4 {
+                                ip: via.uri.host().to_string(),
+                                port: 5060,
+                            },
+                            trying(&conf, &ip.clone().to_string(), &request).to_string(),
+                            &mut socket,
+                        );
+                        thread::sleep(Duration::from_secs(3));
+                        send(
+                            &SocketV4 {
+                                ip: via.uri.host().to_string(),
+                                port: 5060,
+                            },
+                            ok(&conf, &ip.clone().to_string(), &request).to_string(),
                             &mut socket,
                         );
                     }
                     rsip::Method::Message => {}
                     rsip::Method::Notify => {}
-                    rsip::Method::Options => {}
+                    rsip::Method::Options => {
+                        send(
+                            &SocketV4 {
+                                ip: via.uri.host().to_string(),
+                                port: 5060,
+                            },
+                            simple_ok(&conf, &ip.clone().to_string(), &request, rsip::Method::Options).to_string(),
+                            &mut socket,
+                        );
+                    }
                     rsip::Method::PRack => {}
                     rsip::Method::Publish => {}
                     rsip::Method::Refer => {}
@@ -116,15 +162,12 @@ fn main() {
     return;
 }
 
-fn send(conf: &JSONConfiguration, msg: String, socket: &mut UdpSocket) {
+fn send(s_conf: &SocketV4, msg: String, socket: &mut UdpSocket) {
     println!("[{}] - {:?}", line!(), ">>>>>>>>>>>>>");
     print_msg(msg.clone());
 
     socket
-        .send_to(
-            msg.as_bytes(),
-            format!("{}:{}", &conf.sip_server, &conf.sip_port),
-        )
+        .send_to(msg.as_bytes(), format!("{}:{}", s_conf.ip, s_conf.port))
         .unwrap();
 }
 

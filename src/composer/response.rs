@@ -1,13 +1,224 @@
+use crate::composer::header_extension::CustomHeaderExtension::{self};
 use crate::config::JSONConfiguration;
-use rsip::{
-    headers::{auth, CallId, UntypedHeader, UserAgent},
-    message::HeadersExt,
-    typed::WwwAuthenticate,
-    Header, SipMessage,
-};
+use rsip::headers::{Allow, ContentLength, ContentType, ToTypedHeader, UntypedHeader, UserAgent};
+use rsip::param::Tag;
+use rsip::{message::HeadersExt, Header, Request, SipMessage};
+use rsip::{Method, Param};
 use uuid::Uuid;
 
+pub fn ok(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::SipMessage {
+    let mut headers: rsip::Headers = Default::default();
+    let base_uri = rsip::Uri {
+        auth: None,
+        host_with_port: rsip::Domain::from(format!(
+            "sip:{}@{}:{}",
+            &conf.extension, &conf.sip_server, &conf.sip_port
+        ))
+        .into(),
+        ..Default::default()
+    };
 
-pub fn ok(_conf: &JSONConfiguration,_ipp: &String) -> rsip::SipMessage {
-    todo!();
+    headers.push_many(req.headers.get_via_header_array());
+    headers.push_many(req.headers.get_record_route_header_array());
+    headers.push(req.via_header().unwrap().clone().into());
+    headers.push(req.max_forwards_header().unwrap().clone().into());
+    headers.push(req.from_header().unwrap().clone().into());
+
+    let to = req.to_header().unwrap().typed().unwrap();
+    let cseq = req.cseq_header().unwrap().typed().unwrap();
+
+    headers.push(
+        rsip::typed::To {
+            display_name: to.display_name.clone(),
+            uri: to.uri.clone(),
+            params: vec![Param::Tag(Tag::new(Uuid::new_v4().to_string()))],
+        }
+        .into(),
+    );
+    headers.push(
+        rsip::typed::Contact {
+            display_name: Some(format!("{}", conf.username.to_string(),)),
+            uri: base_uri,
+            params: Default::default(),
+        }
+        .into(),
+    );
+    headers.push(req.call_id_header().unwrap().clone().into());
+    headers.push(
+        rsip::typed::CSeq {
+            seq: cseq.seq,
+            method: rsip::Method::Invite,
+        }
+        .into(),
+    );
+    headers.push(
+        Header::Allow(Allow::new(
+            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+        ))
+        .into(),
+    );
+    headers.push(Header::UserAgent(UserAgent::new("Sippy")).into());
+    headers.push(Header::ContentType(ContentType::new("application/sdp")).into());
+
+    let mut body = "v=0\r\n".to_string();
+    body.push_str(&(format!("o=3cxVCE 226678890 391916715 IN IP4 {}\r\n", ip)).to_string());
+    body.push_str("s=3cxVCE Audio Call\r\n");
+    body.push_str(&(format!("c=IN IP4 {}\r\n", ip)).to_string());
+    body.push_str("t=0 0\r\n");
+    body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
+    body.push_str("a=rtpmap:0 PCMU/8000\r\n");
+    body.push_str("a=rtpmap:8 PCMA/8000\r\n");
+    body.push_str("a=rtpmap:96 telephone-event/8000\r\n");
+    body.push_str("a=fmtp:96 0-15\r\n");
+
+    headers.push(Header::ContentLength(ContentLength::new(body.len().to_string())).into());
+
+    let response: SipMessage = rsip::Response {
+        status_code: rsip::StatusCode::OK,
+        version: rsip::Version::V2,
+        headers: headers,
+        body: body.as_bytes().to_vec(),
+    }
+    .into();
+
+    response
+}
+
+pub fn simple_ok(
+    conf: &JSONConfiguration,
+    _ip: &String,
+    req: &Request,
+    method: Method,
+) -> rsip::SipMessage {
+    let mut headers: rsip::Headers = Default::default();
+    let base_uri = rsip::Uri {
+        auth: None,
+        host_with_port: rsip::Domain::from(format!(
+            "sip:{}@{}:{}",
+            &conf.extension, &conf.sip_server, &conf.sip_port
+        ))
+        .into(),
+        ..Default::default()
+    };
+
+    headers.push_many(req.headers.get_via_header_array());
+    headers.push_many(req.headers.get_record_route_header_array());
+    headers.push(req.via_header().unwrap().clone().into());
+
+    match req.max_forwards_header() {
+        Ok(_) => headers.push(req.max_forwards_header().unwrap().clone().into()),
+        Err(_) => {}
+    }
+    
+    headers.push(req.from_header().unwrap().clone().into());
+    let to = req.to_header().unwrap().typed().unwrap();
+    let cseq = req.cseq_header().unwrap().typed().unwrap();
+
+    headers.push(
+        rsip::typed::To {
+            display_name: to.display_name.clone(),
+            uri: to.uri.clone(),
+            params: vec![Param::Tag(Tag::new(Uuid::new_v4().to_string()))],
+        }
+        .into(),
+    );
+    headers.push(
+        rsip::typed::Contact {
+            display_name: Some(format!("{}", conf.username.to_string(),)),
+            uri: base_uri,
+            params: Default::default(),
+        }
+        .into(),
+    );
+    headers.push(req.call_id_header().unwrap().clone().into());
+    headers.push(
+        rsip::typed::CSeq {
+            seq: cseq.seq,
+            method: method,
+        }
+        .into(),
+    );
+    headers.push(
+        Header::Allow(Allow::new(
+            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+        ))
+        .into(),
+    );
+    headers.push(Header::UserAgent(UserAgent::new("Sippy")).into());
+
+    headers.push(rsip::headers::ContentLength::default().into());
+
+    let response: SipMessage = rsip::Response {
+        status_code: rsip::StatusCode::OK,
+        version: rsip::Version::V2,
+        headers: headers,
+        body: Default::default(),
+    }
+    .into();
+
+    response
+}
+
+pub fn trying(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::SipMessage {
+    let mut headers: rsip::Headers = Default::default();
+    let base_uri = rsip::Uri {
+        auth: None,
+        host_with_port: rsip::Domain::from(format!(
+            "sip:{}@{}:{}",
+            &conf.extension, &conf.sip_server, &conf.sip_port
+        ))
+        .into(),
+        ..Default::default()
+    };
+
+    headers.push(
+        rsip::typed::Via {
+            version: rsip::Version::V2,
+            transport: rsip::Transport::Udp,
+            uri: rsip::Uri {
+                host_with_port: (rsip::Domain::from(format!("{}:{}", ip, &conf.sip_port))).into(),
+                ..Default::default()
+            },
+            params: vec![rsip::Param::Branch(rsip::param::Branch::new(
+                "z9hG4bKnashds8",
+            ))],
+        }
+        .into(),
+    );
+    headers.push(req.max_forwards_header().unwrap().clone().into());
+    headers.push(req.from_header().unwrap().clone().into());
+    headers.push(req.to_header().unwrap().clone().into());
+    headers.push(
+        rsip::typed::Contact {
+            display_name: Some(format!("{}", conf.username.to_string(),)),
+            uri: base_uri,
+            params: Default::default(),
+        }
+        .into(),
+    );
+    headers.push(req.call_id_header().unwrap().clone().into());
+    headers.push(
+        rsip::typed::CSeq {
+            seq: 1,
+            method: rsip::Method::Invite,
+        }
+        .into(),
+    );
+    headers.push(
+        Header::Allow(Allow::new(
+            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+        ))
+        .into(),
+    );
+    headers.push(Header::UserAgent(UserAgent::new("Sippy")).into());
+
+    let response: SipMessage = rsip::Response {
+        status_code: rsip::StatusCode::Trying,
+        version: rsip::Version::V2,
+        headers: headers,
+        body: Default::default(),
+    }
+    .into();
+
+    response
 }

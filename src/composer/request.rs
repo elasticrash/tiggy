@@ -1,6 +1,6 @@
 use crate::config::JSONConfiguration;
 use rsip::{
-    headers::{auth, CallId, UntypedHeader, UserAgent},
+    headers::{auth, Allow, CallId, UntypedHeader, UserAgent},
     message::HeadersExt,
     typed::WwwAuthenticate,
     Header, SipMessage,
@@ -38,7 +38,9 @@ pub fn unauthorized_register_request(conf: &JSONConfiguration, ip: &String) -> S
         rsip::typed::From {
             display_name: Some(format!("{}", conf.username.to_string(),)),
             uri: base_uri.clone(),
-            params: vec![rsip::Param::Tag(rsip::param::Tag::new("a73kszlfl"))],
+            params: vec![rsip::Param::Tag(rsip::param::Tag::new(
+                Uuid::new_v4().to_string(),
+            ))],
         }
         .into(),
     );
@@ -70,7 +72,12 @@ pub fn unauthorized_register_request(conf: &JSONConfiguration, ip: &String) -> S
         .into(),
     );
     headers.push(rsip::headers::ContentLength::default().into());
-    headers.push(rsip::headers::Allow::default().into());
+    headers.push(
+        Header::Allow(Allow::new(
+            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+        ))
+        .into(),
+    );
     headers.push(Header::UserAgent(UserAgent::new("Sippy")).into());
 
     let request: SipMessage = rsip::Request {
@@ -149,7 +156,12 @@ pub fn authorized_register_request(
         .into(),
     );
     headers.push(rsip::headers::ContentLength::default().into());
-    headers.push(rsip::headers::Allow::default().into());
+    headers.push(
+        Header::Allow(Allow::new(
+            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+        ))
+        .into(),
+    );
 
     let request: SipMessage = rsip::Request {
         method: rsip::Method::Register,
