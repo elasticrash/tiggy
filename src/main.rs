@@ -3,6 +3,7 @@ extern crate phf;
 extern crate rand;
 mod composer;
 mod config;
+mod log;
 mod models;
 use std::process;
 use std::sync::mpsc::{self};
@@ -20,9 +21,8 @@ use rsip::{
 use std::net::UdpSocket;
 
 use crate::{
-    composer::{
-        request::{authorized_register_request, unauthorized_register_request},
-        response::{ok, simple_ok, trying},
+    composer::messages::{
+        authorized_register_request, ok, simple_ok, trying, unauthorized_register_request,
     },
     models::SIP,
 };
@@ -148,7 +148,7 @@ fn main() {
                                 &mut socket,
                                 silent,
                             );
-                            thread::sleep(Duration::from_secs(3));
+                            thread::sleep(Duration::from_secs(1));
                             send(
                                 &SocketV4 {
                                     ip: via.uri.host().to_string(),
@@ -201,8 +201,7 @@ fn main() {
                     );
                     if code == "x" {
                         break;
-                    }
-                    if code == "s" {
+                    } else if code == "s" {
                         println!(
                             "<{:?}> [{}] - Executing {} command",
                             thread::current().id(),
@@ -210,6 +209,22 @@ fn main() {
                             code
                         );
                         silent = !silent;
+                    } else {
+                        let is_number_valid = is_string_numeric(code);
+
+                        if is_number_valid {
+                            println!(
+                                "<{:?}> [{}] - Number is valid",
+                                thread::current().id(),
+                                line!()
+                            );
+                        } else {
+                            println!(
+                                "<{:?}> [{}] - Number is not valid",
+                                thread::current().id(),
+                                line!()
+                            );
+                        }
                     }
                 }
                 Err(_) => {}
@@ -223,7 +238,13 @@ fn main() {
             Err(why) => panic!("couldn't read {:?}", why.raw_os_error()),
             _ => (),
         };
-        
+
+        if buffer.trim() == "m" {
+            let _ = tx.send("s".to_string()).unwrap();
+            thread::sleep(Duration::from_millis(500));
+            log::print_menu();
+        }
+
         if buffer.trim() == "x" {
             println!(
                 "<{:?}> [{}] - {:?}",
@@ -231,23 +252,38 @@ fn main() {
                 line!(),
                 "Terminating."
             );
-            let _ = tx.send("x").unwrap();
+            let _ = tx.send("x".to_string()).unwrap();
             handler.join().unwrap();
             process::exit(0);
         }
         if buffer.trim() == "s" {
-            let _ = tx.send("s").unwrap();
+            let _ = tx.send("s".to_string()).unwrap();
+        }
+
+        if buffer.clone().trim() == "c" {
+            println!(
+                "<{:?}> [{}] - {:?}",
+                thread::current().id(),
+                line!(),
+                "Enter Phone Number."
+            );
+
+            let mut phone_buffer = String::new();
+
+            match std::io::stdin().read_line(&mut phone_buffer) {
+                Err(why) => panic!("couldn't read {:?}", why.raw_os_error()),
+                _ => (),
+            };
+
+            let _ = tx.send(phone_buffer.trim().to_owned()).unwrap();
         }
     }
 }
 
 fn send(s_conf: &SocketV4, msg: String, socket: &mut UdpSocket, s: bool) {
-    println!(
-        "<{:?}> [{}] - {:?}",
-        thread::current().id(),
-        line!(),
-        ">>>>>>>>>>>>>"
-    );
+    if !s {
+        log::log_out();
+    }
     print_msg(msg.clone(), s);
 
     socket
@@ -260,12 +296,9 @@ fn receive(
     buffer: &mut [u8; 65535],
     s: bool,
 ) -> Result<SipMessage, rsip::Error> {
-    println!(
-        "<{:?}> [{}] - {:?}",
-        thread::current().id(),
-        line!(),
-        "<<<<<<<<<<<<<"
-    );
+    if !s {
+        log::log_in();
+    }
 
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];
@@ -289,4 +322,13 @@ fn print_msg(msg: String, s: bool) {
             println!("<{:?}> [{}] - {:?}", thread::current().id(), line!(), line);
         }
     }
+}
+
+fn is_string_numeric(str: String) -> bool {
+    for c in str.chars() {
+        if !c.is_numeric() {
+            return false;
+        }
+    }
+    return true;
 }
