@@ -5,12 +5,14 @@ mod composer;
 mod config;
 mod log;
 mod models;
+
 use std::process;
 use std::sync::mpsc::{self};
 use std::thread;
 use std::{convert::TryFrom, time::Duration};
 
 use models::SocketV4;
+use rsip::typed::WwwAuthenticate;
 use rsip::{
     header_opt,
     headers::ToTypedHeader,
@@ -20,10 +22,10 @@ use rsip::{
 };
 use std::net::UdpSocket;
 
+use crate::composer::communication::{Answer, Ask};
+use crate::composer::registration::Register;
 use crate::{
-    composer::messages::{
-        authorized_register_request, ok, simple_ok, trying, unauthorized_register_request,
-    },
+    composer::messages::{ok, simple_ok, trying},
     models::SIP,
 };
 
@@ -66,7 +68,23 @@ fn main() {
             history: Vec::new(),
         };
 
-        let register_cseq_1 = unauthorized_register_request(&conf.clone(), &ip.clone().to_string());
+        let reg_conf = conf.clone();
+
+        let mut register: Register = Register {
+            branch: "z9hG4bKnashds8".to_string(),
+            extension: reg_conf.extension.to_string(),
+            ip: ip.to_string(),
+            md5: None,
+            password: reg_conf.password.to_string(),
+            sip_port: reg_conf.sip_port.to_string(),
+            sip_server: reg_conf.sip_server.to_string(),
+            username: reg_conf.username,
+            realm: None,
+            nonce: None,
+            msg: None,
+        };
+
+        let register_cseq_1 = register.asking();
         dialog.history.push(register_cseq_1.clone());
 
         send(
@@ -87,23 +105,27 @@ fn main() {
                 let msg = skip_fail!(receive(&mut socket, &mut buffer, silent));
                 if msg.is_response() {
                     let response = Response::try_from(msg.clone()).unwrap();
+
                     match response.status_code {
                         StatusCode::Unauthorized => {
-                            let www_auth =
+                            let auth = WwwAuthenticate::try_from(
                                 header_opt!(response.headers().iter(), Header::WwwAuthenticate)
-                                    .unwrap();
+                                    .unwrap()
+                                    .clone(),
+                            )
+                            .unwrap();
+
+                            register.nonce = Some(auth.nonce);
+                            register.realm = Some(auth.realm);
+                            register.calculate_md5();
+                            register.msg = dialog.history.last().clone();
+
                             send(
                                 &SocketV4 {
                                     ip: conf.clone().sip_server,
                                     port: conf.clone().sip_port,
                                 },
-                                authorized_register_request(
-                                    &dialog.history.last().unwrap(),
-                                    &conf,
-                                    &rsip::typed::WwwAuthenticate::try_from(www_auth.clone())
-                                        .unwrap(),
-                                )
-                                .to_string(),
+                                register.answering().to_string(),
                                 &mut socket,
                                 silent,
                             );
