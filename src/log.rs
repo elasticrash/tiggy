@@ -23,3 +23,12 @@ pub fn print_menu(){
     println!("c. Dial Number");
     println!("x. Exit");
 }
+
+pub fn print_msg(msg: String, s: bool) {
+    let print = msg.split("\r\n");
+    if !s {
+        for line in print {
+            println!("<{:?}> [{}] - {:?}", thread::current().id(), line!(), line);
+        }
+    }
+}
