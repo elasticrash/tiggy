@@ -25,7 +25,7 @@ use std::net::UdpSocket;
 use crate::composer::communication::{Answer, Ask};
 use crate::composer::registration::Register;
 use crate::{
-    composer::messages::{ok, simple_ok, trying},
+    composer::messages::{ok, trying},
     models::SIP,
 };
 
@@ -147,11 +147,12 @@ fn main() {
                                     ip: via.uri.host().to_string(),
                                     port: 5060,
                                 },
-                                simple_ok(
+                                ok(
                                     &conf,
                                     &ip.clone().to_string(),
                                     &request,
                                     rsip::Method::Bye,
+                                    false
                                 )
                                 .to_string(),
                                 &mut socket,
@@ -176,7 +177,14 @@ fn main() {
                                     ip: via.uri.host().to_string(),
                                     port: 5060,
                                 },
-                                ok(&conf, &ip.clone().to_string(), &request).to_string(),
+                                ok(
+                                    &conf,
+                                    &ip.clone().to_string(),
+                                    &request,
+                                    rsip::Method::Invite,
+                                    true,
+                                )
+                                .to_string(),
                                 &mut socket,
                                 silent,
                             );
@@ -189,11 +197,12 @@ fn main() {
                                     ip: via.uri.host().to_string(),
                                     port: 5060,
                                 },
-                                simple_ok(
+                                ok(
                                     &conf,
                                     &ip.clone().to_string(),
                                     &request,
                                     rsip::Method::Options,
+                                    false
                                 )
                                 .to_string(),
                                 &mut socket,

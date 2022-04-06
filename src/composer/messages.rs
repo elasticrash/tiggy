@@ -7,89 +7,12 @@ use rsip::{message::HeadersExt, Header, SipMessage};
 use rsip::{Method, Param};
 use uuid::Uuid;
 
-pub fn ok(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::SipMessage {
-    let mut headers: rsip::Headers = Default::default();
-    let base_uri = rsip::Uri {
-        auth: None,
-        host_with_port: rsip::Domain::from(format!(
-            "sip:{}@{}:{}",
-            &conf.extension, &conf.sip_server, &conf.sip_port
-        ))
-        .into(),
-        ..Default::default()
-    };
-
-    headers.push_many(req.headers.get_via_header_array());
-    headers.push_many(req.headers.get_record_route_header_array());
-    headers.push(req.via_header().unwrap().clone().into());
-    headers.push(req.max_forwards_header().unwrap().clone().into());
-    headers.push(req.from_header().unwrap().clone().into());
-
-    let to = req.to_header().unwrap().typed().unwrap();
-    let cseq = req.cseq_header().unwrap().typed().unwrap();
-
-    headers.push(
-        rsip::typed::To {
-            display_name: to.display_name.clone(),
-            uri: to.uri.clone(),
-            params: vec![Param::Tag(Tag::new(Uuid::new_v4().to_string()))],
-        }
-        .into(),
-    );
-    headers.push(
-        rsip::typed::Contact {
-            display_name: Some(format!("{}", conf.username.to_string(),)),
-            uri: base_uri,
-            params: Default::default(),
-        }
-        .into(),
-    );
-    headers.push(req.call_id_header().unwrap().clone().into());
-    headers.push(
-        rsip::typed::CSeq {
-            seq: cseq.seq,
-            method: rsip::Method::Invite,
-        }
-        .into(),
-    );
-    headers.push(
-        Header::Allow(Allow::new(
-            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-        ))
-        .into(),
-    );
-    headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
-    headers.push(Header::ContentType(ContentType::new("application/sdp")).into());
-
-    let mut body = "v=0\r\n".to_string();
-    body.push_str(&(format!("o=3cxVCE 226678890 391916715 IN IP4 {}\r\n", ip)).to_string());
-    body.push_str("s=3cxVCE Audio Call\r\n");
-    body.push_str(&(format!("c=IN IP4 {}\r\n", ip)).to_string());
-    body.push_str("t=0 0\r\n");
-    body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
-    body.push_str("a=rtpmap:0 PCMU/8000\r\n");
-    body.push_str("a=rtpmap:8 PCMA/8000\r\n");
-    body.push_str("a=rtpmap:96 telephone-event/8000\r\n");
-    body.push_str("a=fmtp:96 0-15\r\n");
-
-    headers.push(Header::ContentLength(ContentLength::new(body.len().to_string())).into());
-
-    let response: SipMessage = rsip::Response {
-        status_code: rsip::StatusCode::OK,
-        version: rsip::Version::V2,
-        headers: headers,
-        body: body.as_bytes().to_vec(),
-    }
-    .into();
-
-    response
-}
-
-pub fn simple_ok(
+pub fn ok(
     conf: &JSONConfiguration,
-    _ip: &String,
+    ip: &String,
     req: &Request,
     method: Method,
+    sdp: bool,
 ) -> rsip::SipMessage {
     let mut headers: rsip::Headers = Default::default();
     let base_uri = rsip::Uri {
@@ -146,14 +69,30 @@ pub fn simple_ok(
         .into(),
     );
     headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
+    headers.push(Header::ContentType(ContentType::new("application/sdp")).into());
 
-    headers.push(rsip::headers::ContentLength::default().into());
+    let mut body = "v=0\r\n".to_string();
+    body.push_str(&(format!("o=3cxVCE 226678890 391916715 IN IP4 {}\r\n", ip)).to_string());
+    body.push_str("s=3cxVCE Audio Call\r\n");
+    body.push_str(&(format!("c=IN IP4 {}\r\n", ip)).to_string());
+    body.push_str("t=0 0\r\n");
+    body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
+    body.push_str("a=rtpmap:0 PCMU/8000\r\n");
+    body.push_str("a=rtpmap:8 PCMA/8000\r\n");
+    body.push_str("a=rtpmap:96 telephone-event/8000\r\n");
+    body.push_str("a=fmtp:96 0-15\r\n");
+
+    headers.push(Header::ContentLength(ContentLength::new(body.len().to_string())).into());
 
     let response: SipMessage = rsip::Response {
         status_code: rsip::StatusCode::OK,
         version: rsip::Version::V2,
         headers: headers,
-        body: Default::default(),
+        body: if sdp {
+            body.as_bytes().to_vec()
+        } else {
+            Default::default()
+        },
     }
     .into();
 
