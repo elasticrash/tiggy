@@ -3,7 +3,7 @@ use rsip::message::HeadersExt;
 use rsip::{headers::auth, Header, SipMessage};
 use uuid::Uuid;
 
-use super::communication::{Answer, Ask};
+use super::communication::{Call, Trying};
 
 pub struct Register<'a> {
     pub extension: String,
@@ -46,8 +46,8 @@ impl Register<'_> {
     }
 }
 
-impl Ask for Register<'_> {
-    fn asking(&self) -> SipMessage {
+impl Call for Register<'_> {
+    fn ask(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
 
         let base_uri = rsip::Uri {
@@ -111,7 +111,14 @@ impl Ask for Register<'_> {
         headers.push(
             rsip::typed::Contact {
                 display_name: Some(format!("{}", &self.username.to_string(),)),
-                uri: base_uri,
+                uri: rsip::Uri {
+                    host_with_port: (rsip::Domain::from(format!(
+                        "{}:{}",
+                        &self.ip, &self.sip_port
+                    )))
+                    .into(),
+                    ..Default::default()
+                },
                 params: Default::default(),
             }
             .into(),
@@ -146,22 +153,63 @@ impl Ask for Register<'_> {
     }
 }
 
-impl Answer for Register<'_> {
-    fn answering(&self) -> SipMessage {
+impl Trying for Register<'_> {
+    fn attempt(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
-        headers.push(self.msg.as_ref().unwrap().via_header().unwrap().clone().into());
         headers.push(
-            self.msg.as_ref()
+            self.msg
+                .as_ref()
+                .unwrap()
+                .via_header()
+                .unwrap()
+                .clone()
+                .into(),
+        );
+        headers.push(
+            self.msg
+                .as_ref()
                 .unwrap()
                 .max_forwards_header()
                 .unwrap()
                 .clone()
                 .into(),
         );
-        headers.push(self.msg.as_ref().unwrap().from_header().unwrap().clone().into());
-        headers.push(self.msg.as_ref().unwrap().to_header().unwrap().clone().into());
-        headers.push(self.msg.as_ref().unwrap().contact_header().unwrap().clone().into());
-        headers.push(self.msg.as_ref().unwrap().call_id_header().unwrap().clone().into());
+        headers.push(
+            self.msg
+                .as_ref()
+                .unwrap()
+                .from_header()
+                .unwrap()
+                .clone()
+                .into(),
+        );
+        headers.push(
+            self.msg
+                .as_ref()
+                .unwrap()
+                .to_header()
+                .unwrap()
+                .clone()
+                .into(),
+        );
+        headers.push(
+            self.msg
+                .as_ref()
+                .unwrap()
+                .contact_header()
+                .unwrap()
+                .clone()
+                .into(),
+        );
+        headers.push(
+            self.msg
+                .as_ref()
+                .unwrap()
+                .call_id_header()
+                .unwrap()
+                .clone()
+                .into(),
+        );
 
         headers.push(
             rsip::typed::CSeq {

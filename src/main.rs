@@ -1,15 +1,17 @@
 extern crate md5;
 extern crate phf;
 extern crate rand;
+mod commands;
 mod composer;
 mod config;
 mod log;
+mod menu;
 mod models;
-mod commands;
 mod sockets;
 
 use std::process;
 use std::sync::mpsc::{self};
+use std::sync::Arc;
 use std::thread;
 use std::{convert::TryFrom, time::Duration};
 
@@ -24,13 +26,16 @@ use rsip::{
 };
 use std::net::UdpSocket;
 
-use crate::composer::communication::{Answer, Ask};
+use crate::commands::invite::Invite;
+use crate::composer::communication::{Call, Trying};
 use crate::composer::registration::Register;
-use crate::sockets::{send, receive, peek};
+use crate::sockets::{peek, receive, send};
 use crate::{
     composer::messages::{ok, trying},
     models::SIP,
 };
+
+use crate::menu::builder::build_menu;
 
 macro_rules! skip_fail {
     ($res:expr) => {
@@ -72,6 +77,7 @@ fn main() {
         };
 
         let reg_conf = conf.clone();
+        let inv_conf = conf.clone();
 
         let mut register: Register = Register {
             branch: "z9hG4bKnashds8".to_string(),
@@ -87,7 +93,17 @@ fn main() {
             msg: None,
         };
 
-        let register_cseq_1 = register.asking();
+        let mut invite: Invite = Invite {
+            username: inv_conf.username,
+            extension: inv_conf.extension.to_string(),
+            sip_server: inv_conf.sip_server.to_string(),
+            sip_port: inv_conf.sip_port.to_string(),
+            ip: ip.to_string(),
+            msg: None,
+            cld: None,
+        };
+
+        let register_cseq_1 = register.ask();
         dialog.history.push(register_cseq_1.clone());
 
         send(
@@ -128,7 +144,7 @@ fn main() {
                                     ip: conf.clone().sip_server,
                                     port: conf.clone().sip_port,
                                 },
-                                register.answering().to_string(),
+                                register.attempt().to_string(),
                                 &mut socket,
                                 silent,
                             );
@@ -155,7 +171,7 @@ fn main() {
                                     &ip.clone().to_string(),
                                     &request,
                                     rsip::Method::Bye,
-                                    false
+                                    false,
                                 )
                                 .to_string(),
                                 &mut socket,
@@ -205,7 +221,7 @@ fn main() {
                                     &ip.clone().to_string(),
                                     &request,
                                     rsip::Method::Options,
-                                    false
+                                    false,
                                 )
                                 .to_string(),
                                 &mut socket,
@@ -225,46 +241,63 @@ fn main() {
                 break;
             }
 
+            let action_menu = Arc::new(build_menu());
+
             match rx.try_recv() {
                 Ok(code) => {
-                    println!(
-                        "<{:?}> [{}] - Received {} command",
-                        thread::current().id(),
-                        line!(),
-                        code
-                    );
-                    if code == "x" {
-                        break;
-                    } else if code == "s" {
-                        println!(
-                            "<{:?}> [{}] - Executing {} command",
-                            thread::current().id(),
-                            line!(),
-                            code
-                        );
-                        silent = !silent;
-                    } else {
-                        let is_number_valid = is_string_numeric(code);
+                    let command = String::from(code);
+                    log::slog(format!("received command, {}", command.to_string()).as_str());
 
-                        if is_number_valid {
-                            println!(
-                                "<{:?}> [{}] - Number is valid",
+                    if (command.len() > 1 && command.chars().all(char::is_numeric)) {}
+
+                    match action_menu.iter().find(|&x| x.value == command) {
+                        Some(item) => match item.category {
+                            menu::builder::MenuType::Exit => {
+                                break;
+                            }
+                            menu::builder::MenuType::Silent => {
+                                silent = !silent;
+                            }
+                            menu::builder::MenuType::Dial => {
+                                let is_number_valid = is_string_numeric(command.clone());
+
+                                if is_number_valid {
+                                    println!(
+                                        "<{:?}> [{}] - Number is valid",
+                                        thread::current().id(),
+                                        line!()
+                                    );
+
+                                    invite.cld = Some(command.clone());
+
+                                    send(
+                                        &SocketV4 {
+                                            ip: conf.clone().sip_server,
+                                            port: conf.clone().sip_port,
+                                        },
+                                        invite.ask().to_string(),
+                                        &mut socket,
+                                        silent,
+                                    );
+                                }
+                            }
+                            menu::builder::MenuType::Answer => todo!(),
+                            _ => println!(
+                                "<{:?}> [{}] - {} Not supported",
                                 thread::current().id(),
-                                line!()
-                            );
-                        } else {
-                            println!(
-                                "<{:?}> [{}] - Number is not valid",
-                                thread::current().id(),
-                                line!()
-                            );
-                        }
+                                line!(),
+                                command
+                            ),
+                        },
+                        None => todo!(),
                     }
                 }
                 Err(_) => {}
             }
         }
     });
+
+    let cmd_menu = Arc::new(build_menu());
 
     loop {
         let mut buffer = String::new();
@@ -273,43 +306,35 @@ fn main() {
             _ => (),
         };
 
-        if buffer.trim() == "m" {
-            let _ = tx.send("s".to_string()).unwrap();
-            thread::sleep(Duration::from_millis(500));
-            log::print_menu();
-        }
+        match cmd_menu.iter().find(|&x| x.value == buffer.trim()) {
+            Some(item) => match item.category {
+                menu::builder::MenuType::DisplayMenu => {
+                    log::print_menu();
+                }
+                menu::builder::MenuType::Exit => {
+                    log::slog("Terminating");
+                    tx.send(item.value.to_string()).unwrap();
+                    handler.join().unwrap();
+                    process::exit(0);
+                }
+                menu::builder::MenuType::Silent => {
+                    tx.send(item.value.to_string()).unwrap();
+                }
+                menu::builder::MenuType::Dial => {
+                    log::slog("Enter Phone Number");
+                    let mut phone_buffer = String::new();
+                    match std::io::stdin().read_line(&mut phone_buffer) {
+                        Err(why) => panic!("couldn't read {:?}", why.raw_os_error()),
+                        _ => (),
+                    };
 
-        if buffer.trim() == "x" {
-            println!(
-                "<{:?}> [{}] - {:?}",
-                thread::current().id(),
-                line!(),
-                "Terminating."
-            );
-            let _ = tx.send("x".to_string()).unwrap();
-            handler.join().unwrap();
-            process::exit(0);
-        }
-        if buffer.trim() == "s" {
-            let _ = tx.send("s".to_string()).unwrap();
-        }
-
-        if buffer.clone().trim() == "c" {
-            println!(
-                "<{:?}> [{}] - {:?}",
-                thread::current().id(),
-                line!(),
-                "Enter Phone Number."
-            );
-
-            let mut phone_buffer = String::new();
-
-            match std::io::stdin().read_line(&mut phone_buffer) {
-                Err(why) => panic!("couldn't read {:?}", why.raw_os_error()),
-                _ => (),
-            };
-
-            let _ = tx.send(phone_buffer.trim().to_owned()).unwrap();
+                    let _ = tx.send(phone_buffer.trim().to_owned()).unwrap();
+                }
+                menu::builder::MenuType::Answer => {
+                    tx.send(item.value.to_string()).unwrap();
+                }
+            },
+            None => log::slog("Invalid Command"),
         }
     }
 }

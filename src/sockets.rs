@@ -1,9 +1,9 @@
-use std::{net::UdpSocket, convert::TryFrom};
-use rsip::SipMessage;
 use crate::{
-    log::{log_out, print_msg, log_in},
+    log::{log_in, log_out, print_msg},
     models::SocketV4,
 };
+use rsip::SipMessage;
+use std::{convert::TryFrom, net::UdpSocket};
 
 pub fn send(s_conf: &SocketV4, msg: String, socket: &mut UdpSocket, s: bool) {
     if !s {

@@ -1,9 +1,9 @@
 use rsip::SipMessage;
 
-pub trait Answer {
-    fn answering(&self) ->  SipMessage;
+pub trait Call {
+    fn ask(&self) -> SipMessage;
 }
 
-pub trait Ask {
-    fn asking(&self) ->  SipMessage;
+pub trait Trying {
+    fn attempt(&self) -> SipMessage;
 }

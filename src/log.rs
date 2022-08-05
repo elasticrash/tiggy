@@ -18,7 +18,16 @@ pub fn log_in() {
     );
 }
 
-pub fn print_menu(){
+pub fn slog(log: &str) {
+    println!(
+        "<{:?}> [{}] - {:?}",
+        thread::current().id(),
+        line!(),
+        log
+    );
+}
+
+pub fn print_menu() {
     println!("s. Toggle Silent mode");
     println!("c. Dial Number");
     println!("x. Exit");
