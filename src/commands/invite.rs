@@ -63,9 +63,12 @@ impl Call for Invite<'_> {
             }
             .into(),
         );
+
+        headers.push(rsip::headers::CallId::from(Uuid::new_v4().to_string()).into());
+
         headers.push(
             rsip::typed::Contact {
-                display_name: Some(format!("{}", &self.username.to_string(),)),
+                display_name: Some(format!("{}", &self.username.to_string())),
                 uri: base_uri,
                 params: Default::default(),
             }
@@ -112,8 +115,10 @@ impl Call for Invite<'_> {
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
-                    "{}:{}",
-                    &self.sip_server, &self.sip_port
+                    "{}@{}:{}",
+                    &self.cld.as_ref().unwrap().to_string(),
+                    &self.sip_server,
+                    &self.sip_port
                 ))
                 .into(),
                 ..Default::default()
