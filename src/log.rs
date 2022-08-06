@@ -19,12 +19,7 @@ pub fn log_in() {
 }
 
 pub fn slog(log: &str) {
-    println!(
-        "<{:?}> [{}] - {:?}",
-        thread::current().id(),
-        line!(),
-        log
-    );
+    println!("<{:?}> [{}] - {:?}", thread::current().id(), line!(), log);
 }
 
 pub fn print_menu() {

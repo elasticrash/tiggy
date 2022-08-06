@@ -245,10 +245,19 @@ fn main() {
 
             match rx.try_recv() {
                 Ok(code) => {
-                    let command = String::from(code);
+                    let mut command = String::from(code);
+                    let mut argument: String = "".to_string();
                     log::slog(format!("received command, {}", command.to_string()).as_str());
 
-                    if (command.len() > 1 && command.chars().all(char::is_numeric)) {}
+                    if command.len() > 1 {
+                        let split_command = command.split("|").collect::<Vec<&str>>();
+                        argument = split_command[1].to_string();
+                        command = split_command[0].to_string();
+                    }
+
+                    if !is_string_numeric(argument.clone()) {
+                        command = "invalid_argument".to_string();
+                    }
 
                     match action_menu.iter().find(|&x| x.value == command) {
                         Some(item) => match item.category {
@@ -259,35 +268,20 @@ fn main() {
                                 silent = !silent;
                             }
                             menu::builder::MenuType::Dial => {
-                                let is_number_valid = is_string_numeric(command.clone());
+                                invite.cld = Some(argument);
 
-                                if is_number_valid {
-                                    println!(
-                                        "<{:?}> [{}] - Number is valid",
-                                        thread::current().id(),
-                                        line!()
-                                    );
-
-                                    invite.cld = Some(command.clone());
-
-                                    send(
-                                        &SocketV4 {
-                                            ip: conf.clone().sip_server,
-                                            port: conf.clone().sip_port,
-                                        },
-                                        invite.ask().to_string(),
-                                        &mut socket,
-                                        silent,
-                                    );
-                                }
+                                send(
+                                    &SocketV4 {
+                                        ip: conf.clone().sip_server,
+                                        port: conf.clone().sip_port,
+                                    },
+                                    invite.ask().to_string(),
+                                    &mut socket,
+                                    silent,
+                                );
                             }
                             menu::builder::MenuType::Answer => todo!(),
-                            _ => println!(
-                                "<{:?}> [{}] - {} Not supported",
-                                thread::current().id(),
-                                line!(),
-                                command
-                            ),
+                            _ => log::slog(format!("{} Not supported", command).as_str()),
                         },
                         None => todo!(),
                     }
@@ -328,7 +322,9 @@ fn main() {
                         _ => (),
                     };
 
-                    let _ = tx.send(phone_buffer.trim().to_owned()).unwrap();
+                    let _ = tx
+                        .send(format!("d|{}", phone_buffer.trim().to_owned()))
+                        .unwrap();
                 }
                 menu::builder::MenuType::Answer => {
                     tx.send(item.value.to_string()).unwrap();
