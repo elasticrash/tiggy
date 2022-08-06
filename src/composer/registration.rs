@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use super::communication::{Call, Trying};
 
-pub struct Register<'a> {
+#[derive(Clone)]
+pub struct Register {
     pub extension: String,
     pub sip_server: String,
     pub sip_port: String,
@@ -16,10 +17,10 @@ pub struct Register<'a> {
     pub password: String,
     pub md5: Option<String>,
     pub nonce: Option<String>,
-    pub msg: Option<&'a SipMessage>,
+    pub msg: Option<SipMessage>,
 }
 
-impl Register<'_> {
+impl Register {
     pub fn calculate_md5(&mut self) {
         let ha1 = format!(
             "{}:{}:{}",
@@ -46,7 +47,7 @@ impl Register<'_> {
     }
 }
 
-impl Call for Register<'_> {
+impl Call for Register {
     fn ask(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
 
@@ -153,7 +154,7 @@ impl Call for Register<'_> {
     }
 }
 
-impl Trying for Register<'_> {
+impl Trying for Register {
     fn attempt(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         headers.push(

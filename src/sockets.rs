@@ -1,9 +1,11 @@
-use crate::{
-    log::{log_in, log_out, print_msg},
-    models::SocketV4,
-};
+use crate::log::{log_in, log_out, print_msg};
 use rsip::SipMessage;
 use std::{convert::TryFrom, net::UdpSocket};
+
+pub struct SocketV4 {
+    pub ip: String,
+    pub port: u16,
+}
 
 pub fn send(s_conf: &SocketV4, msg: String, socket: &mut UdpSocket, s: bool) {
     if !s {

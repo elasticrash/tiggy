@@ -4,9 +4,9 @@ extern crate rand;
 mod commands;
 mod composer;
 mod config;
+mod flow;
 mod log;
 mod menu;
-mod models;
 mod sockets;
 
 use std::process;
@@ -15,25 +15,12 @@ use std::sync::Arc;
 use std::thread;
 use std::{convert::TryFrom, time::Duration};
 
-use models::SocketV4;
-use rsip::typed::WwwAuthenticate;
-use rsip::{
-    header_opt,
-    headers::ToTypedHeader,
-    message::{HasHeaders, HeadersExt},
-    typed::Via,
-    Header, Request, Response, StatusCode,
-};
+use rsip::Response;
 use std::net::UdpSocket;
 
-use crate::commands::invite::Invite;
-use crate::composer::communication::{Call, Trying};
-use crate::composer::registration::Register;
-use crate::sockets::{peek, receive, send};
-use crate::{
-    composer::messages::{ok, trying},
-    models::SIP,
-};
+use crate::composer::communication::Call;
+use crate::flow::inbound::{inbound_request_flow, inbound_response_flow, inbound_start};
+use crate::sockets::{peek, receive, send, SocketV4};
 
 use crate::menu::builder::build_menu;
 
@@ -72,174 +59,34 @@ fn main() {
             .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
             .expect("connect function failed");
 
-        let mut dialog = SIP {
-            history: Vec::new(),
-        };
-
-        let reg_conf = conf.clone();
-        let inv_conf = conf.clone();
-
-        let mut register: Register = Register {
-            branch: "z9hG4bKnashds8".to_string(),
-            extension: reg_conf.extension.to_string(),
-            ip: ip.to_string(),
-            md5: None,
-            password: reg_conf.password.to_string(),
-            sip_port: reg_conf.sip_port.to_string(),
-            sip_server: reg_conf.sip_server.to_string(),
-            username: reg_conf.username,
-            realm: None,
-            nonce: None,
-            msg: None,
-        };
-
-        let mut invite: Invite = Invite {
-            username: inv_conf.username,
-            extension: inv_conf.extension.to_string(),
-            sip_server: inv_conf.sip_server.to_string(),
-            sip_port: inv_conf.sip_port.to_string(),
-            ip: ip.to_string(),
-            msg: None,
-            cld: None,
-        };
-
-        let register_cseq_1 = register.ask();
-        dialog.history.push(register_cseq_1.clone());
-
-        send(
-            &SocketV4 {
-                ip: conf.clone().sip_server,
-                port: conf.clone().sip_port,
-            },
-            register_cseq_1.to_string(),
-            &mut socket,
-            silent,
-        );
-
         let mut count: i32 = 0;
+        let shared = inbound_start(&conf, &ip);
 
         loop {
+            if count == 0 {
+                send(
+                    &SocketV4 {
+                        ip: conf.clone().sip_server,
+                        port: conf.clone().sip_port,
+                    },
+                    shared.borrow().reg.ask().to_string(),
+                    &mut socket,
+                    silent,
+                );
+            }
+
             let packet_size = peek(&mut socket, &mut buffer);
             if packet_size > 0 {
                 let msg = skip_fail!(receive(&mut socket, &mut buffer, silent));
                 if msg.is_response() {
                     let response = Response::try_from(msg.clone()).unwrap();
 
-                    match response.status_code {
-                        StatusCode::Unauthorized => {
-                            let auth = WwwAuthenticate::try_from(
-                                header_opt!(response.headers().iter(), Header::WwwAuthenticate)
-                                    .unwrap()
-                                    .clone(),
-                            )
-                            .unwrap();
-
-                            register.nonce = Some(auth.nonce);
-                            register.realm = Some(auth.realm);
-                            register.calculate_md5();
-                            register.msg = dialog.history.last().clone();
-
-                            send(
-                                &SocketV4 {
-                                    ip: conf.clone().sip_server,
-                                    port: conf.clone().sip_port,
-                                },
-                                register.attempt().to_string(),
-                                &mut socket,
-                                silent,
-                            );
-                        }
-                        StatusCode::Trying => {}
-                        StatusCode::OK => {}
-                        _ => {}
-                    }
+                    inbound_response_flow(&response, &mut socket, &conf, &shared, silent);
                 } else {
-                    let request = Request::try_from(msg.clone()).unwrap();
-                    let via: Via = request.via_header().unwrap().typed().unwrap();
-
-                    match request.clone().method {
-                        rsip::Method::Register => {}
-                        rsip::Method::Ack => {}
-                        rsip::Method::Bye => {
-                            send(
-                                &SocketV4 {
-                                    ip: via.uri.host().to_string(),
-                                    port: 5060,
-                                },
-                                ok(
-                                    &conf,
-                                    &ip.clone().to_string(),
-                                    &request,
-                                    rsip::Method::Bye,
-                                    false,
-                                )
-                                .to_string(),
-                                &mut socket,
-                                silent,
-                            );
-                        }
-                        rsip::Method::Cancel => {}
-                        rsip::Method::Info => {}
-                        rsip::Method::Invite => {
-                            send(
-                                &SocketV4 {
-                                    ip: via.uri.host().to_string(),
-                                    port: 5060,
-                                },
-                                trying(&conf, &ip.clone().to_string(), &request).to_string(),
-                                &mut socket,
-                                silent,
-                            );
-                            thread::sleep(Duration::from_secs(1));
-                            send(
-                                &SocketV4 {
-                                    ip: via.uri.host().to_string(),
-                                    port: 5060,
-                                },
-                                ok(
-                                    &conf,
-                                    &ip.clone().to_string(),
-                                    &request,
-                                    rsip::Method::Invite,
-                                    true,
-                                )
-                                .to_string(),
-                                &mut socket,
-                                silent,
-                            );
-                        }
-                        rsip::Method::Message => {}
-                        rsip::Method::Notify => {}
-                        rsip::Method::Options => {
-                            send(
-                                &SocketV4 {
-                                    ip: via.uri.host().to_string(),
-                                    port: 5060,
-                                },
-                                ok(
-                                    &conf,
-                                    &ip.clone().to_string(),
-                                    &request,
-                                    rsip::Method::Options,
-                                    false,
-                                )
-                                .to_string(),
-                                &mut socket,
-                                silent,
-                            );
-                        }
-                        rsip::Method::PRack => {}
-                        rsip::Method::Publish => {}
-                        rsip::Method::Refer => {}
-                        rsip::Method::Subscribe => {}
-                        rsip::Method::Update => {}
-                    }
+                    inbound_request_flow(&msg, &mut socket, &conf, &ip, silent);
                 }
             }
             count += 1;
-            if count == 1800 {
-                break;
-            }
 
             let action_menu = Arc::new(build_menu());
 
@@ -268,17 +115,17 @@ fn main() {
                                 silent = !silent;
                             }
                             menu::builder::MenuType::Dial => {
-                                invite.cld = Some(argument);
+                                // invite.cld = Some(argument);
 
-                                send(
-                                    &SocketV4 {
-                                        ip: conf.clone().sip_server,
-                                        port: conf.clone().sip_port,
-                                    },
-                                    invite.ask().to_string(),
-                                    &mut socket,
-                                    silent,
-                                );
+                                // send(
+                                //     &SocketV4 {
+                                //         ip: conf.clone().sip_server,
+                                //         port: conf.clone().sip_port,
+                                //     },
+                                //     invite.ask().to_string(),
+                                //     &mut socket,
+                                //     silent,
+                                // );
                             }
                             menu::builder::MenuType::Answer => todo!(),
                             _ => log::slog(format!("{} Not supported", command).as_str()),
