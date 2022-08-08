@@ -17,11 +17,12 @@ use rsip::{
 };
 use std::{
     cell::RefCell,
+    collections::VecDeque,
     convert::TryFrom,
     net::{IpAddr, UdpSocket},
     sync::{Arc, Mutex},
     thread,
-    time::Duration, collections::VecDeque,
+    time::Duration,
 };
 
 use super::state::InboundInit;

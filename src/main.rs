@@ -9,13 +9,11 @@ mod log;
 mod menu;
 mod sockets;
 
-use std::borrow::Borrow;
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread::{self, Thread};
+use std::thread::{self};
 use std::time::Instant;
 use std::{convert::TryFrom, time::Duration};
 
@@ -65,7 +63,7 @@ fn main() -> Result<(), io::Error> {
         ip.to_string()
     ));
 
-    let mut thread_logs = Arc::clone(&logs);
+    let thread_logs = Arc::clone(&logs);
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();

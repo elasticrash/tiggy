@@ -1,6 +1,11 @@
 use crate::log::{log_in, log_out, print_msg};
 use rsip::SipMessage;
-use std::{convert::TryFrom, net::UdpSocket, sync::{Mutex, Arc}, collections::VecDeque};
+use std::{
+    collections::VecDeque,
+    convert::TryFrom,
+    net::UdpSocket,
+    sync::{Arc, Mutex},
+};
 
 pub struct SocketV4 {
     pub ip: String,
