@@ -19,8 +19,9 @@ use std::{
     cell::RefCell,
     convert::TryFrom,
     net::{IpAddr, UdpSocket},
+    sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::Duration, collections::VecDeque,
 };
 
 use super::state::InboundInit;
@@ -52,6 +53,7 @@ pub fn inbound_request_flow(
     conf: &JSONConfiguration,
     ip: &IpAddr,
     silent: bool,
+    logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let request = Request::try_from(msg.clone()).unwrap();
     let via: Via = request.via_header().unwrap().typed().unwrap();
@@ -75,6 +77,7 @@ pub fn inbound_request_flow(
                 .to_string(),
                 socket,
                 silent,
+                &logs,
             );
         }
         rsip::Method::Cancel => {}
@@ -88,6 +91,7 @@ pub fn inbound_request_flow(
                 trying(&conf, &ip.clone().to_string(), &request).to_string(),
                 socket,
                 silent,
+                &logs,
             );
             thread::sleep(Duration::from_secs(1));
             send(
@@ -105,6 +109,7 @@ pub fn inbound_request_flow(
                 .to_string(),
                 socket,
                 silent,
+                logs,
             );
         }
         rsip::Method::Message => {}
@@ -125,6 +130,7 @@ pub fn inbound_request_flow(
                 .to_string(),
                 socket,
                 silent,
+                logs,
             );
         }
         rsip::Method::PRack => {}
@@ -141,6 +147,7 @@ pub fn inbound_response_flow(
     conf: &JSONConfiguration,
     state: &RefCell<InboundInit>,
     silent: bool,
+    logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let mut state_ref = state.borrow_mut();
     let msg: SipMessage = SipMessage::try_from(state_ref.msg.clone()).unwrap();
@@ -153,7 +160,6 @@ pub fn inbound_response_flow(
                     .clone(),
             )
             .unwrap();
-
 
             state_ref.reg.nonce = Some(auth.nonce);
             state_ref.reg.realm = Some(auth.realm);
@@ -168,6 +174,7 @@ pub fn inbound_response_flow(
                 state_ref.reg.attempt().to_string(),
                 socket,
                 silent,
+                logs,
             );
         }
         StatusCode::Trying => {}

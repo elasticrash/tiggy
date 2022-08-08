@@ -15,3 +15,6 @@ pub fn outbound_start(conf: &JSONConfiguration, ip: &IpAddr) {
 
     todo!()
 }
+
+pub fn inbound_request_flow() {}
+pub fn outbound_response_flow() {}
