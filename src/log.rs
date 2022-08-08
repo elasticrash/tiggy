@@ -48,10 +48,10 @@ pub fn print_menu() -> Vec<Spans<'static>> {
 }
 
 pub fn print_msg(msg: String, s: bool, logs: &Arc<Mutex<VecDeque<String>>>) {
-    let print = msg.split("\r\n");
+    let print: Vec<&str> = msg.split("\r\n").collect();
+    let mut arr = logs.lock().unwrap();
     if !s {
         for line in print {
-            let mut arr = logs.lock().unwrap();
             arr.push_back(format!(
                 "<{:?}> [{}] - {:?}",
                 thread::current().id(),
@@ -59,5 +59,12 @@ pub fn print_msg(msg: String, s: bool, logs: &Arc<Mutex<VecDeque<String>>>) {
                 line
             ));
         }
+    } else {
+        arr.push_back(format!(
+            "<{:?}> [{}] - {:?}",
+            thread::current().id(),
+            line!(),
+            print[0]
+        ));
     }
 }

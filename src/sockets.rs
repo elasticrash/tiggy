@@ -19,9 +19,7 @@ pub fn send(
     s: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
-    if !s {
-        log_out(&logs);
-    }
+    log_out(&logs);
     print_msg(msg.clone(), s, logs);
 
     socket
@@ -35,9 +33,7 @@ pub fn receive(
     s: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) -> Result<SipMessage, rsip::Error> {
-    if !s {
-        log_in(&logs);
-    }
+    log_in(&logs);
 
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];
