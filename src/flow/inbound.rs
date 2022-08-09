@@ -13,7 +13,7 @@ use rsip::{
     message::HasHeaders,
     message::HeadersExt,
     typed::{Via, WwwAuthenticate},
-    Header, Request, Response, SipMessage, StatusCode,
+    Header, Method, Request, Response, SipMessage, StatusCode,
 };
 use std::{
     cell::RefCell,
@@ -55,7 +55,7 @@ pub fn inbound_request_flow(
     ip: &IpAddr,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
-) {
+) -> Method {
     let request = Request::try_from(msg.clone()).unwrap();
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
@@ -140,6 +140,7 @@ pub fn inbound_request_flow(
         rsip::Method::Subscribe => {}
         rsip::Method::Update => {}
     }
+    return request.clone().method;
 }
 
 pub fn inbound_response_flow(
@@ -149,7 +150,7 @@ pub fn inbound_response_flow(
     state: &RefCell<InboundInit>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
-) {
+) -> StatusCode {
     let mut state_ref = state.borrow_mut();
     let msg: SipMessage = SipMessage::try_from(state_ref.msg.clone()).unwrap();
 
@@ -182,4 +183,5 @@ pub fn inbound_response_flow(
         StatusCode::OK => {}
         _ => {}
     }
+    return response.status_code.clone();
 }

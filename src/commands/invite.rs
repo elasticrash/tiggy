@@ -4,17 +4,18 @@ use uuid::Uuid;
 
 use crate::composer::communication::Call;
 
-pub struct Invite<'a> {
+#[derive(Clone)]
+pub struct Invite {
     pub extension: String,
     pub username: String,
     pub sip_server: String,
     pub sip_port: String,
     pub ip: String,
-    pub msg: Option<&'a SipMessage>,
+    pub msg: Option<SipMessage>,
     pub cld: Option<String>,
 }
 
-impl Call for Invite<'_> {
+impl Call for Invite {
     fn ask(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = rsip::Uri {

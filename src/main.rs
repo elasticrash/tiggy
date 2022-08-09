@@ -8,6 +8,7 @@ mod flow;
 mod log;
 mod menu;
 mod sockets;
+mod ui;
 
 use std::collections::VecDeque;
 use std::io;
@@ -22,15 +23,14 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use log::print_menu;
-use rsip::Response;
+use flow::outbound::{outbound_request_flow, outbound_response_flow, outbound_start};
+use flow::Flow;
+use rsip::{Response, Method};
 use std::net::UdpSocket;
 use tui::backend::{Backend, CrosstermBackend};
-use tui::layout::{Constraint, Corner, Direction, Layout};
-use tui::style::Style;
-use tui::text::{Span, Spans};
-use tui::widgets::{Block, Borders, List, ListItem};
-use tui::{Frame, Terminal};
+use tui::widgets::{Block, Borders};
+use tui::Terminal;
+use ui::app::{ui, App, InputMode};
 
 use crate::composer::communication::Call;
 use crate::flow::inbound::{inbound_request_flow, inbound_response_flow, inbound_start};
@@ -82,6 +82,8 @@ fn main() -> Result<(), io::Error> {
     let _handler = builder
         .spawn(move || {
             let mut silent = false;
+            let mut flow = Flow::Inbound;
+
             let mut buffer = [0 as u8; 65535];
 
             let mut socket = UdpSocket::bind("0.0.0.0:5060").unwrap();
@@ -92,7 +94,8 @@ fn main() -> Result<(), io::Error> {
                 .expect("connect function failed");
 
             let mut count: i32 = 0;
-            let shared = inbound_start(&conf, &ip);
+            let shared_in = inbound_start(&conf, &ip);
+            let shared_out = outbound_start(&conf, &ip);
 
             'thread: loop {
                 if count == 0 {
@@ -101,7 +104,7 @@ fn main() -> Result<(), io::Error> {
                             ip: conf.clone().sip_server,
                             port: conf.clone().sip_port,
                         },
-                        shared.borrow().reg.ask().to_string(),
+                        shared_in.borrow().reg.ask().to_string(),
                         &mut socket,
                         silent,
                         &thread_logs,
@@ -109,21 +112,45 @@ fn main() -> Result<(), io::Error> {
                 }
 
                 let packet_size = peek(&mut socket, &mut buffer);
+
                 if packet_size > 0 {
                     let msg = skip_fail!(receive(&mut socket, &mut buffer, silent, &thread_logs));
-                    if msg.is_response() {
-                        let response = Response::try_from(msg.clone()).unwrap();
 
-                        inbound_response_flow(
-                            &response,
-                            &mut socket,
-                            &conf,
-                            &shared,
-                            silent,
-                            &thread_logs,
-                        );
-                    } else {
-                        inbound_request_flow(&msg, &mut socket, &conf, &ip, silent, &thread_logs);
+                    match flow {
+                        Flow::Inbound => {
+                            if msg.is_response() {
+                                let response = Response::try_from(msg.clone()).unwrap();
+
+                                inbound_response_flow(
+                                    &response,
+                                    &mut socket,
+                                    &conf,
+                                    &shared_in,
+                                    silent,
+                                    &thread_logs,
+                                );
+                            } else {
+                                inbound_request_flow(
+                                    &msg,
+                                    &mut socket,
+                                    &conf,
+                                    &ip,
+                                    silent,
+                                    &thread_logs,
+                                );
+                            }
+                        }
+                        Flow::Outbound => {
+                            if msg.is_response() {
+                                let response = Response::try_from(msg.clone()).unwrap();
+                                outbound_response_flow(&response, &shared_out);
+                            } else {
+                                let inb_msg = outbound_request_flow(&msg);
+                                if inb_msg == Method::Bye {
+                                    flow = Flow::Inbound;
+                                }
+                            }
+                        }
                     }
                 }
                 count += 1;
@@ -160,17 +187,9 @@ fn main() -> Result<(), io::Error> {
                                     silent = !silent;
                                 }
                                 menu::builder::MenuType::Dial => {
-                                    // invite.cld = Some(argument);
-
-                                    // send(
-                                    //     &SocketV4 {
-                                    //         ip: conf.clone().sip_server,
-                                    //         port: conf.clone().sip_port,
-                                    //     },
-                                    //     invite.ask().to_string(),
-                                    //     &mut socket,
-                                    //     silent,
-                                    // );
+                                    flow = Flow::Outbound;
+                                    let mut shared = shared_out.borrow_mut();
+                                    shared.inv.cld = Some(argument);
                                 }
                                 menu::builder::MenuType::Answer => todo!(),
                                 _ => log::slog(
@@ -188,7 +207,8 @@ fn main() -> Result<(), io::Error> {
         .unwrap();
 
     // create app and run it
-    let res = run_app(&mut terminal, &tx, &logs, Duration::from_millis(250));
+    let app: App = App::default();
+    let res = run_app(&mut terminal, &tx, &logs, app);
 
     // restore terminal
     disable_raw_mode()?;
@@ -210,102 +230,74 @@ fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     tx: &Sender<String>,
     logs: &Arc<Mutex<VecDeque<String>>>,
-    tick_rate: Duration,
+    mut app: App,
 ) -> io::Result<()> {
     let cmd_menu = Arc::new(build_menu());
     let mut last_tick = Instant::now();
 
     loop {
-        terminal.draw(|f| ui(f, &logs))?;
-        let timeout = tick_rate
+        terminal.draw(|f| ui(f, &app, &logs))?;
+        let timeout = app
+            .tick_rate
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
-                match cmd_menu.iter().find(|&x| x.value == key.code) {
-                    Some(item) => {
-                        let key_value = match item.value {
-                            KeyCode::Char(c) => c,
-                            _ => 'u',
-                        };
+                match app.input_mode {
+                    InputMode::Normal => match cmd_menu.iter().find(|&x| x.value == key.code) {
+                        Some(item) => {
+                            let key_value = match item.value {
+                                KeyCode::Char(c) => c,
+                                _ => 'u',
+                            };
 
-                        match item.category {
-                            menu::builder::MenuType::DisplayMenu => {
-                                log::print_menu();
-                            }
-                            menu::builder::MenuType::Exit => {
-                                log::slog("Terminating", &logs);
-                                thread::sleep(Duration::from_secs(1));
-                                return Ok(());
-                            }
-                            menu::builder::MenuType::Silent => {
-                                tx.send(key_value.to_string()).unwrap();
-                            }
-                            menu::builder::MenuType::Dial => {
-                                todo!();
-                                log::slog("Enter Phone Number", &logs);
-                                let mut phone_buffer = String::new();
-                                match std::io::stdin().read_line(&mut phone_buffer) {
-                                    Err(why) => panic!("couldn't read {:?}", why.raw_os_error()),
-                                    _ => (),
-                                };
-
-                                let _ = tx
-                                    .send(format!("d|{}", phone_buffer.trim().to_owned()))
-                                    .unwrap();
-                            }
-                            menu::builder::MenuType::Answer => {
-                                todo!();
+                            match item.category {
+                                menu::builder::MenuType::DisplayMenu => {
+                                    log::print_menu();
+                                }
+                                menu::builder::MenuType::Exit => {
+                                    log::slog("Terminating", &logs);
+                                    thread::sleep(Duration::from_millis(300));
+                                    return Ok(());
+                                }
+                                menu::builder::MenuType::Silent => {
+                                    tx.send(key_value.to_string()).unwrap();
+                                }
+                                menu::builder::MenuType::Dial => {
+                                    app.input_mode = InputMode::Editing;
+                                }
+                                menu::builder::MenuType::Answer => {
+                                    todo!();
+                                }
                             }
                         }
-                    }
-                    None => log::slog("Invalid Command", &logs),
+                        None => log::slog("Invalid Command", &logs),
+                    },
+                    InputMode::Editing => match key.code {
+                        KeyCode::Enter => {
+                            app.input_mode = InputMode::Normal;
+                            let _ = tx
+                                .send(format!("d|{}", app.input.trim().to_owned()))
+                                .unwrap();
+                        }
+                        KeyCode::Char(c) => {
+                            app.input.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            app.input.pop();
+                        }
+                        KeyCode::Esc => {
+                            app.input_mode = InputMode::Normal;
+                        }
+                        _ => {}
+                    },
                 }
             }
-        }
-        if last_tick.elapsed() >= tick_rate {
-            last_tick = Instant::now();
-        }
-    }
-}
-
-fn ui<B: Backend>(f: &mut Frame<B>, logs: &Arc<Mutex<VecDeque<String>>>) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
-        .split(f.size());
-
-    let command_block = Block::default().title("Commands").borders(Borders::ALL);
-    let raw_block = Block::default().title("Raw Logs").borders(Borders::ALL);
-
-    let lines = print_menu();
-
-    let command_list = List::new(vec![ListItem::new(lines)])
-        .block(command_block)
-        .start_corner(Corner::TopRight);
-    f.render_widget(command_list, chunks[0]);
-
-    let mut lg: Vec<Spans> = vec![];
-    let mut lgs = logs.lock().unwrap();
-    if lgs.len() > 500 {
-        lgs.drain(0..300);
-    }
-    let offset = lgs.len() as i32 - (f.size().height - 3) as i32;
-    let offset_ = if offset < 0 { 0 } else { offset };
-
-    for x in 0..f.size().height - 3 {
-        if x < lgs.len() as u16 {
-            lg.push(Spans::from(Span::styled(
-                &*lgs[(offset_ + x as i32) as usize],
-                Style::default(),
-            )));
+            if last_tick.elapsed() >= app.tick_rate {
+                last_tick = Instant::now();
+            }
         }
     }
-
-    let events_list = List::new(vec![ListItem::new(lg)])
-        .block(raw_block)
-        .start_corner(Corner::TopRight);
-    f.render_widget(events_list, chunks[1]);
 }
 
 fn is_string_numeric(str: String) -> bool {
