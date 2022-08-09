@@ -42,7 +42,12 @@ pub fn slog(log: &str, logs: &Arc<Mutex<VecDeque<String>>>) {
 pub fn print_menu() -> Vec<Spans<'static>> {
     vec![
         { Spans::from(Span::styled("s. Toggle Silent mode", Style::default())) },
-        { Spans::from(Span::styled("d. Dial Number & (enter to sumbit)", Style::default())) },
+        {
+            Spans::from(Span::styled(
+                "d. Dial Number & (enter to sumbit)",
+                Style::default(),
+            ))
+        },
         { Spans::from(Span::styled("   or (esc to cancel)", Style::default())) },
         { Spans::from(Span::styled("x. Exit", Style::default())) },
     ]

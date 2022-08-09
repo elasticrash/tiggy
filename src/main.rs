@@ -23,9 +23,11 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use flow::outbound::{outbound_request_flow, outbound_response_flow, outbound_start};
+use flow::outbound::{
+    outbound_configure, outbound_request_flow, outbound_response_flow, outbound_start,
+};
 use flow::Flow;
-use rsip::{Response, Method};
+use rsip::{Method, Response};
 use std::net::UdpSocket;
 use tui::backend::{Backend, CrosstermBackend};
 use tui::widgets::{Block, Borders};
@@ -95,7 +97,7 @@ fn main() -> Result<(), io::Error> {
 
             let mut count: i32 = 0;
             let shared_in = inbound_start(&conf, &ip);
-            let shared_out = outbound_start(&conf, &ip);
+            let shared_out = outbound_configure(&conf, &ip);
 
             'thread: loop {
                 if count == 0 {
@@ -188,8 +190,17 @@ fn main() -> Result<(), io::Error> {
                                 }
                                 menu::builder::MenuType::Dial => {
                                     flow = Flow::Outbound;
-                                    let mut shared = shared_out.borrow_mut();
-                                    shared.inv.cld = Some(argument);
+                                    {
+                                        let mut shared = shared_out.borrow_mut();
+                                        shared.inv.cld = Some(argument);
+                                    }
+                                    outbound_start(
+                                        &mut socket,
+                                        &conf,
+                                        &shared_out,
+                                        silent,
+                                        &thread_logs,
+                                    );
                                 }
                                 menu::builder::MenuType::Answer => todo!(),
                                 _ => log::slog(

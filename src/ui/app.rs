@@ -49,7 +49,9 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &App, logs: &Arc<Mutex<VecDeque<Str
 
     let command_block = Block::default().title("Commands").borders(Borders::ALL);
     let raw_block = Block::default().title("Raw Logs").borders(Borders::ALL);
-    let input_block = Block::default().borders(Borders::ALL).title("Enter Number to Dial");
+    let input_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Enter Number to Dial");
 
     let mut text = Text::from(Spans::from("press d"));
     text.patch_style(Style::default());
