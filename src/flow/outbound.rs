@@ -1,18 +1,19 @@
+use crate::{
+    commands::invite::Invite,
+    composer::communication::{Auth, Call, Trying},
+    config::JSONConfiguration,
+    sockets::{send, SocketV4},
+};
+use rsip::{
+    header_opt, message::HasHeaders, typed::WwwAuthenticate, Header, Method, Request, Response,
+    SipMessage, StatusCode,
+};
 use std::{
     cell::RefCell,
     collections::VecDeque,
     convert::TryFrom,
     net::{IpAddr, UdpSocket},
     sync::{Arc, Mutex},
-};
-
-use rsip::{Method, Request, Response, SipMessage, StatusCode};
-
-use crate::{
-    commands::invite::Invite,
-    composer::communication::Call,
-    config::JSONConfiguration,
-    sockets::{send, SocketV4},
 };
 
 use super::state::OutboundInit;
@@ -25,11 +26,14 @@ pub fn outbound_configure(conf: &JSONConfiguration, ip: &IpAddr) -> RefCell<Outb
         sip_port: conf.sip_port.to_string(),
         ip: ip.to_string(),
         msg: None,
-        cld: None,
+        cld: Some(conf.username.clone()),
+        md5: None,
+        nonce: None,
     };
 
     return RefCell::new(OutboundInit {
         inv: invite.clone(),
+        msg: invite.clone().ask().to_string(),
     });
 }
 
@@ -72,12 +76,44 @@ pub fn outbound_request_flow(msg: &SipMessage) -> Method {
         Method::Update => todo!(),
     }
 }
-pub fn outbound_response_flow(response: &Response, _state: &RefCell<OutboundInit>) -> StatusCode {
+pub fn outbound_response_flow(
+    response: &Response,
+    socket: &mut UdpSocket,
+    conf: &JSONConfiguration,
+    state: &RefCell<OutboundInit>,
+    silent: bool,
+    logs: &Arc<Mutex<VecDeque<String>>>,
+) -> StatusCode {
+    let mut state_ref = state.borrow_mut();
+    let msg: SipMessage = SipMessage::try_from(state_ref.msg.clone()).unwrap();
+
     match response.status_code {
         StatusCode::Trying => todo!(),
-        StatusCode::Unauthorized => todo!(),
+        StatusCode::Unauthorized => {
+            let auth = WwwAuthenticate::try_from(
+                header_opt!(response.headers().iter(), Header::WwwAuthenticate)
+                    .unwrap()
+                    .clone(),
+            )
+            .unwrap();
+
+            state_ref.inv.nonce = Some(auth.nonce);
+            state_ref.inv.set_auth(&conf);
+            state_ref.inv.msg = Some(msg);
+
+            send(
+                &SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                },
+                state_ref.inv.attempt().to_string(),
+                socket,
+                silent,
+                logs,
+            );
+        }
         StatusCode::OK => todo!(),
         _ => todo!(),
     }
-    // return response.status_code.clone();
+    return response.status_code.clone();
 }

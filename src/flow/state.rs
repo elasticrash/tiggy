@@ -1,4 +1,4 @@
-use crate::{commands::invite::Invite, composer::registration::Register};
+use crate::{commands::invite::Invite, commands::register::Register};
 
 #[derive(Clone)]
 pub struct InboundInit {
@@ -9,4 +9,5 @@ pub struct InboundInit {
 #[derive(Clone)]
 pub struct OutboundInit {
     pub inv: Invite,
+    pub msg: String,
 }

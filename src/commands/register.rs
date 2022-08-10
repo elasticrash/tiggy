@@ -3,46 +3,35 @@ use rsip::message::HeadersExt;
 use rsip::{headers::auth, Header, SipMessage};
 use uuid::Uuid;
 
-use super::communication::{Call, Trying};
+use crate::composer::communication::{Auth, Call, Trying};
+use crate::config::JSONConfiguration;
+use crate::helper::auth::calculate_md5;
 
 #[derive(Clone)]
 pub struct Register {
+    pub username: String,
     pub extension: String,
     pub sip_server: String,
     pub sip_port: String,
     pub branch: String,
     pub ip: String,
-    pub username: String,
-    pub realm: Option<String>,
-    pub password: String,
     pub md5: Option<String>,
     pub nonce: Option<String>,
     pub msg: Option<SipMessage>,
 }
 
-impl Register {
-    pub fn calculate_md5(&mut self) {
-        let ha1 = format!(
-            "{}:{}:{}",
-            &self.username,
-            &self.realm.as_ref().unwrap(),
-            &self.password
-        );
-        let ha2 = format!(
-            "{}:sip:{}@{}:{}",
-            "REGISTER".to_string(),
+impl Auth for Register {
+    fn set_auth(&mut self, conf: &JSONConfiguration) {
+        let md5 = calculate_md5(
+            &conf.username,
+            &conf.password,
+            &format!("{}", &self.sip_server),
             &self.extension,
             &self.sip_server,
-            &self.sip_port
+            &self.sip_port,
+            &self.nonce.as_ref().unwrap(),
+            &String::from("REGISTER"),
         );
-
-        let cmd5 = format!(
-            "{:x}:{}:{:x}",
-            md5::compute(ha1),
-            self.nonce.as_ref().unwrap(),
-            md5::compute(ha2)
-        );
-        let md5 = format!("{:x}", md5::compute(cmd5));
         self.md5 = Some(md5);
     }
 }

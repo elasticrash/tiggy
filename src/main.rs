@@ -9,6 +9,7 @@ mod log;
 mod menu;
 mod sockets;
 mod ui;
+mod helper;
 
 use std::collections::VecDeque;
 use std::io;
@@ -18,6 +19,7 @@ use std::thread::{self};
 use std::time::Instant;
 use std::{convert::TryFrom, time::Duration};
 
+use composer::communication::Call;
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
 use crossterm::execute;
 use crossterm::terminal::{
@@ -34,7 +36,6 @@ use tui::widgets::{Block, Borders};
 use tui::Terminal;
 use ui::app::{ui, App, InputMode};
 
-use crate::composer::communication::Call;
 use crate::flow::inbound::{inbound_request_flow, inbound_response_flow, inbound_start};
 use crate::sockets::{peek, receive, send, SocketV4};
 
@@ -145,7 +146,14 @@ fn main() -> Result<(), io::Error> {
                         Flow::Outbound => {
                             if msg.is_response() {
                                 let response = Response::try_from(msg.clone()).unwrap();
-                                outbound_response_flow(&response, &shared_out);
+                                outbound_response_flow(
+                                    &response,
+                                    &mut socket,
+                                    &conf,
+                                    &shared_out,
+                                    silent,
+                                    &thread_logs,
+                                );
                             } else {
                                 let inb_msg = outbound_request_flow(&msg);
                                 if inb_msg == Method::Bye {
@@ -219,7 +227,7 @@ fn main() -> Result<(), io::Error> {
 
     // create app and run it
     let app: App = App::default();
-    let res = run_app(&mut terminal, &tx, &logs, app);
+    let res = menu_and_refresh(&mut terminal, &tx, &logs, app);
 
     // restore terminal
     disable_raw_mode()?;
@@ -237,7 +245,7 @@ fn main() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn run_app<B: Backend>(
+fn menu_and_refresh<B: Backend>(
     terminal: &mut Terminal<B>,
     tx: &Sender<String>,
     logs: &Arc<Mutex<VecDeque<String>>>,

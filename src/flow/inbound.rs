@@ -1,11 +1,10 @@
 use crate::{
     composer::{
-        communication::{Call, Trying},
+        communication::{Call, Trying, Auth},
         messages::{ok, trying},
-        registration::Register,
     },
     config::JSONConfiguration,
-    sockets::{send, SocketV4},
+    sockets::{send, SocketV4}, commands::register::Register,
 };
 use rsip::{
     header_opt,
@@ -33,11 +32,9 @@ pub fn inbound_start<'a>(conf: &'a JSONConfiguration, ip: &'a IpAddr) -> RefCell
         extension: conf.extension.to_string(),
         ip: ip.to_string(),
         md5: None,
-        password: conf.password.to_string(),
         sip_port: conf.sip_port.to_string(),
         sip_server: conf.sip_server.to_string(),
         username: conf.username.clone(),
-        realm: None,
         nonce: None,
         msg: None,
     };
@@ -164,8 +161,7 @@ pub fn inbound_response_flow(
             .unwrap();
 
             state_ref.reg.nonce = Some(auth.nonce);
-            state_ref.reg.realm = Some(auth.realm);
-            state_ref.reg.calculate_md5();
+            state_ref.reg.set_auth(&conf);
             state_ref.reg.msg = Some(msg);
 
             send(
