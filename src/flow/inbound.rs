@@ -1,10 +1,11 @@
 use crate::{
+    commands::register::Register,
     composer::{
-        communication::{Call, Trying, Auth},
+        communication::{Auth, Call, Trying},
         messages::{ok, trying},
     },
     config::JSONConfiguration,
-    sockets::{send, SocketV4}, commands::register::Register,
+    sockets::{send, SocketV4}, log,
 };
 use rsip::{
     header_opt,
@@ -55,6 +56,11 @@ pub fn inbound_request_flow(
 ) -> Method {
     let request = Request::try_from(msg.clone()).unwrap();
     let via: Via = request.via_header().unwrap().typed().unwrap();
+
+    log::slog(
+        format!("received inbound request, {}", request.clone().method).as_str(),
+        &logs,
+    );
 
     match request.clone().method {
         rsip::Method::Register => {}
@@ -150,6 +156,11 @@ pub fn inbound_response_flow(
 ) -> StatusCode {
     let mut state_ref = state.borrow_mut();
     let msg: SipMessage = SipMessage::try_from(state_ref.msg.clone()).unwrap();
+
+    log::slog(
+        format!("received inbound response, {}",  response.status_code).as_str(),
+        &logs,
+    );
 
     match response.status_code {
         StatusCode::Unauthorized => {

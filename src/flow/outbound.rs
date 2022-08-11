@@ -1,12 +1,19 @@
 use crate::{
-    commands::invite::Invite,
-    composer::communication::{Auth, Call, Trying},
+    commands::{ack::Ack, invite::Invite},
+    composer::{
+        communication::{Auth, Call, Trying},
+        messages::ok,
+    },
     config::JSONConfiguration,
+    log,
     sockets::{send, SocketV4},
 };
 use rsip::{
-    header_opt, message::HasHeaders, typed::WwwAuthenticate, Header, Method, Request, Response,
-    SipMessage, StatusCode,
+    header_opt,
+    message::HasHeaders,
+    prelude::{HeadersExt, ToTypedHeader},
+    typed::{Via, WwwAuthenticate},
+    Header, Method, Request, Response, SipMessage, StatusCode,
 };
 use std::{
     cell::RefCell,
@@ -57,8 +64,22 @@ pub fn outbound_start(
     );
 }
 
-pub fn outbound_request_flow(msg: &SipMessage) -> Method {
+pub fn outbound_request_flow(
+    msg: &SipMessage,
+    socket: &mut UdpSocket,
+    conf: &JSONConfiguration,
+    ip: &IpAddr,
+    silent: bool,
+    logs: &Arc<Mutex<VecDeque<String>>>,
+) -> Method {
     let request = Request::try_from(msg.clone()).unwrap();
+    let via: Via = request.via_header().unwrap().typed().unwrap();
+
+    log::slog(
+        format!("received outbound request, {}", request.clone().method).as_str(),
+        &logs,
+    );
+
     match request.clone().method {
         Method::Ack => todo!(),
         Method::Bye => todo!(),
@@ -67,7 +88,25 @@ pub fn outbound_request_flow(msg: &SipMessage) -> Method {
         Method::Invite => todo!(),
         Method::Message => todo!(),
         Method::Notify => todo!(),
-        Method::Options => todo!(),
+        Method::Options => {
+            send(
+                &SocketV4 {
+                    ip: via.uri.host().to_string(),
+                    port: 5060,
+                },
+                ok(
+                    &conf,
+                    &ip.clone().to_string(),
+                    &request,
+                    rsip::Method::Options,
+                    false,
+                )
+                .to_string(),
+                socket,
+                silent,
+                logs,
+            );
+        }
         Method::PRack => todo!(),
         Method::Publish => todo!(),
         Method::Refer => todo!(),
@@ -75,11 +114,13 @@ pub fn outbound_request_flow(msg: &SipMessage) -> Method {
         Method::Subscribe => todo!(),
         Method::Update => todo!(),
     }
+    return request.clone().method;
 }
 pub fn outbound_response_flow(
     response: &Response,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
+    ip: &IpAddr,
     state: &RefCell<OutboundInit>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
@@ -87,8 +128,34 @@ pub fn outbound_response_flow(
     let mut state_ref = state.borrow_mut();
     let msg: SipMessage = SipMessage::try_from(state_ref.msg.clone()).unwrap();
 
+    log::slog(
+        format!("received outbound response, {}", response.status_code).as_str(),
+        &logs,
+    );
+
     match response.status_code {
-        StatusCode::Trying => todo!(),
+        StatusCode::Trying => {
+            let ack: Ack = Ack {
+                extension: conf.extension.to_string(),
+                username: conf.username.clone(),
+                sip_server: conf.sip_server.to_string(),
+                sip_port: conf.sip_port.to_string(),
+                ip: ip.to_string(),
+                msg: None,
+                cld: Some(conf.username.clone()),
+            };
+
+            send(
+                &SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                },
+                ack.ask().to_string(),
+                socket,
+                silent,
+                logs,
+            );
+        }
         StatusCode::Unauthorized => {
             let auth = WwwAuthenticate::try_from(
                 header_opt!(response.headers().iter(), Header::WwwAuthenticate)
@@ -112,7 +179,8 @@ pub fn outbound_response_flow(
                 logs,
             );
         }
-        StatusCode::OK => todo!(),
+        StatusCode::Ringing => {}
+        StatusCode::OK => {}
         _ => todo!(),
     }
     return response.status_code.clone();

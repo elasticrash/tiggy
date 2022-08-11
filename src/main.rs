@@ -5,11 +5,11 @@ mod commands;
 mod composer;
 mod config;
 mod flow;
+mod helper;
 mod log;
 mod menu;
 mod sockets;
 mod ui;
-mod helper;
 
 use std::collections::VecDeque;
 use std::io;
@@ -150,12 +150,20 @@ fn main() -> Result<(), io::Error> {
                                     &response,
                                     &mut socket,
                                     &conf,
+                                    &ip,
                                     &shared_out,
                                     silent,
                                     &thread_logs,
                                 );
                             } else {
-                                let inb_msg = outbound_request_flow(&msg);
+                                let inb_msg = outbound_request_flow(
+                                    &msg,
+                                    &mut socket,
+                                    &conf,
+                                    &ip,
+                                    silent,
+                                    &thread_logs,
+                                );
                                 if inb_msg == Method::Bye {
                                     flow = Flow::Inbound;
                                 }
@@ -201,6 +209,7 @@ fn main() -> Result<(), io::Error> {
                                     {
                                         let mut shared = shared_out.borrow_mut();
                                         shared.inv.cld = Some(argument);
+                                        shared.msg = shared.inv.clone().ask().to_string();
                                     }
                                     outbound_start(
                                         &mut socket,
