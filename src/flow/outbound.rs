@@ -1,5 +1,5 @@
 use crate::{
-    commands::{ack::Ack, invite::Invite},
+    commands::{invite::Invite},
     composer::{
         communication::{Auth, Call, Trying},
         messages::ok,
@@ -40,7 +40,7 @@ pub fn outbound_configure(conf: &JSONConfiguration, ip: &IpAddr) -> RefCell<Outb
 
     return RefCell::new(OutboundInit {
         inv: invite.clone(),
-        msg: invite.clone().ask().to_string(),
+        msg: invite.clone().init("".to_string()).to_string(),
     });
 }
 
@@ -49,6 +49,7 @@ pub fn outbound_start(
     conf: &JSONConfiguration,
     state: &RefCell<OutboundInit>,
     silent: bool,
+    destination: String,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let state_ref = state.borrow();
@@ -57,7 +58,7 @@ pub fn outbound_start(
             ip: conf.clone().sip_server,
             port: conf.clone().sip_port,
         },
-        state_ref.inv.ask().to_string(),
+        state_ref.inv.init(destination).to_string(),
         socket,
         silent,
         logs,
@@ -82,7 +83,25 @@ pub fn outbound_request_flow(
 
     match request.clone().method {
         Method::Ack => todo!(),
-        Method::Bye => todo!(),
+        Method::Bye => {
+            send(
+                &SocketV4 {
+                    ip: via.uri.host().to_string(),
+                    port: 5060,
+                },
+                ok(
+                    &conf,
+                    &ip.clone().to_string(),
+                    &request,
+                    rsip::Method::Bye,
+                    false,
+                )
+                .to_string(),
+                socket,
+                silent,
+                &logs,
+            );
+        },
         Method::Cancel => todo!(),
         Method::Info => todo!(),
         Method::Invite => todo!(),
@@ -120,7 +139,7 @@ pub fn outbound_response_flow(
     response: &Response,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
-    ip: &IpAddr,
+    _ip: &IpAddr,
     state: &RefCell<OutboundInit>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
@@ -134,28 +153,7 @@ pub fn outbound_response_flow(
     );
 
     match response.status_code {
-        StatusCode::Trying => {
-            let ack: Ack = Ack {
-                extension: conf.extension.to_string(),
-                username: conf.username.clone(),
-                sip_server: conf.sip_server.to_string(),
-                sip_port: conf.sip_port.to_string(),
-                ip: ip.to_string(),
-                msg: None,
-                cld: Some(conf.username.clone()),
-            };
-
-            send(
-                &SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                },
-                ack.ask().to_string(),
-                socket,
-                silent,
-                logs,
-            );
-        }
+        StatusCode::Trying => {}
         StatusCode::Unauthorized => {
             let auth = WwwAuthenticate::try_from(
                 header_opt!(response.headers().iter(), Header::WwwAuthenticate)
@@ -180,7 +178,28 @@ pub fn outbound_response_flow(
             );
         }
         StatusCode::Ringing => {}
-        StatusCode::OK => {}
+        StatusCode::OK => {
+            // let ack: Ack = Ack {
+            //     extension: conf.extension.to_string(),
+            //     username: conf.username.clone(),
+            //     sip_server: conf.sip_server.to_string(),
+            //     sip_port: conf.sip_port.to_string(),
+            //     ip: ip.to_string(),
+            //     msg: None,
+            //     cld: state_ref.inv.cld.clone(),
+            // };
+
+            // send(
+            //     &SocketV4 {
+            //         ip: conf.clone().sip_server,
+            //         port: conf.clone().sip_port,
+            //     },
+            //     ack.ask().to_string(),
+            //     socket,
+            //     silent,
+            //     logs,
+            // );
+        }
         _ => todo!(),
     }
     return response.status_code.clone();

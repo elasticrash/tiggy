@@ -1,5 +1,5 @@
-use rsip::headers::{Allow, UntypedHeader, UserAgent};
-use rsip::message::HeadersExt;
+use crate::composer::header_extension::PartialHeaderClone;
+use rsip::headers::{UntypedHeader, UserAgent};
 use rsip::{headers::auth, Header, SipMessage};
 use uuid::Uuid;
 
@@ -37,7 +37,7 @@ impl Auth for Invite {
 }
 
 impl Call for Invite {
-    fn ask(&self) -> SipMessage {
+    fn init(&self, destination: String) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = rsip::Uri {
             auth: None,
@@ -80,7 +80,17 @@ impl Call for Invite {
         headers.push(
             rsip::typed::To {
                 display_name: Some(format!("{}", &self.cld.as_ref().unwrap().to_string(),)),
-                uri: base_uri.clone(),
+                uri: rsip::Uri {
+                    auth: None,
+                    host_with_port: rsip::Domain::from(format!(
+                        "sip:{}@{}:{}",
+                        &self.cld.as_ref().unwrap().to_string(),
+                        &self.sip_server,
+                        &self.sip_port
+                    ))
+                    .into(),
+                    ..Default::default()
+                },
                 params: Default::default(),
             }
             .into(),
@@ -104,14 +114,14 @@ impl Call for Invite {
             }
             .into(),
         );
-        headers.push(rsip::headers::ContentLength::default().into());
         headers.push(
-            Header::Allow(Allow::new(
+            rsip::headers::Allow::from(
                 "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-            ))
+            )
             .into(),
         );
-        headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
+
+        headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
 
         headers.push(
             rsip::typed::Via {
@@ -132,22 +142,37 @@ impl Call for Invite {
             .into(),
         );
 
+        let mut body = "v=0\r\n".to_string();
+        body.push_str(
+            &(format!("o=tggVCE 226678890 391916715 IN IP4 {}\r\n", &self.ip)).to_string(),
+        );
+        body.push_str("s=tggVCE Audio Call\r\n");
+        body.push_str(&(format!("c=IN IP4 {}\r\n", &self.ip)).to_string());
+        body.push_str("t=0 0\r\n");
+        body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
+        body.push_str("a=rtpmap:0 PCMU/8000\r\n");
+        body.push_str("a=rtpmap:8 PCMA/8000\r\n");
+        body.push_str("a=rtpmap:96 telephone-event/8000\r\n");
+        body.push_str("a=fmtp:96 0-15\r\n");
+
+        headers.push(rsip::headers::ContentType::from("application/sdp").into());
+
+        headers.push(rsip::headers::ContentLength::from(body.len().to_string()).into());
+
         let response: SipMessage = rsip::Request {
             method: rsip::Method::Invite,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
                     "{}@{}:{}",
-                    &self.cld.as_ref().unwrap().to_string(),
-                    &self.sip_server,
-                    &self.sip_port
+                    destination, &self.sip_server, &self.sip_port
                 ))
                 .into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,
             headers: headers,
-            body: Default::default(),
+            body: body.as_bytes().to_vec(),
         }
         .into();
 
@@ -157,69 +182,9 @@ impl Call for Invite {
 
 impl Trying for Invite {
     fn attempt(&self) -> SipMessage {
-        let mut headers: rsip::Headers = Default::default();
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .via_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .max_forwards_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .from_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .to_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .contact_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .call_id_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
 
-        headers.push(
-            rsip::typed::CSeq {
-                seq: 2,
-                method: rsip::Method::Invite,
-            }
-            .into(),
-        );
+        headers.push(rsip::headers::ContentType::from("application/sdp").into());
 
         headers.push(
             rsip::typed::Authorization {
@@ -243,28 +208,23 @@ impl Trying for Invite {
             }
             .into(),
         );
-        headers.push(rsip::headers::ContentLength::default().into());
-        headers.push(
-            Header::Allow(Allow::new(
-                "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-            ))
-            .into(),
-        );
 
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Invite,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
-                    "{}:{}",
-                    &self.sip_server, &self.sip_port
+                    "{}@{}:{}",
+                    self.cld.as_ref().unwrap(),
+                    &self.sip_server,
+                    &self.sip_port
                 ))
                 .into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,
-            headers: headers,
-            body: Default::default(),
+            headers: headers.clone(),
+            body: self.msg.as_ref().unwrap().body().clone(),
         }
         .into();
 

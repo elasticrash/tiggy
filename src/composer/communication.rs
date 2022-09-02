@@ -2,8 +2,12 @@ use rsip::SipMessage;
 
 use crate::config::JSONConfiguration;
 
+pub trait Start {
+    fn set(&self) -> SipMessage;
+}
+
 pub trait Call {
-    fn ask(&self) -> SipMessage;
+    fn init(&self, destination: String) -> SipMessage;
 }
 
 pub trait Trying {

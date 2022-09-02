@@ -19,7 +19,7 @@ use std::thread::{self};
 use std::time::Instant;
 use std::{convert::TryFrom, time::Duration};
 
-use composer::communication::Call;
+use composer::communication::{Call, Start};
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
 use crossterm::execute;
 use crossterm::terminal::{
@@ -107,7 +107,7 @@ fn main() -> Result<(), io::Error> {
                             ip: conf.clone().sip_server,
                             port: conf.clone().sip_port,
                         },
-                        shared_in.borrow().reg.ask().to_string(),
+                        shared_in.borrow().reg.set().to_string(),
                         &mut socket,
                         silent,
                         &thread_logs,
@@ -208,14 +208,15 @@ fn main() -> Result<(), io::Error> {
                                     flow = Flow::Outbound;
                                     {
                                         let mut shared = shared_out.borrow_mut();
-                                        shared.inv.cld = Some(argument);
-                                        shared.msg = shared.inv.clone().ask().to_string();
+                                        shared.inv.cld = Some(argument.clone());
+                                        shared.msg = shared.inv.clone().init(argument.clone()).to_string();
                                     }
                                     outbound_start(
                                         &mut socket,
                                         &conf,
                                         &shared_out,
                                         silent,
+                                        argument.clone(),
                                         &thread_logs,
                                     );
                                 }

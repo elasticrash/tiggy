@@ -68,12 +68,12 @@ pub fn ok(
         ))
         .into(),
     );
-    headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
+    headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
     headers.push(Header::ContentType(ContentType::new("application/sdp")).into());
 
     let mut body = "v=0\r\n".to_string();
-    body.push_str(&(format!("o=3cxVCE 226678890 391916715 IN IP4 {}\r\n", ip)).to_string());
-    body.push_str("s=3cxVCE Audio Call\r\n");
+    body.push_str(&(format!("o=tggVCE 226678890 391916715 IN IP4 {}\r\n", ip)).to_string());
+    body.push_str("s=tggVCE Audio Call\r\n");
     body.push_str(&(format!("c=IN IP4 {}\r\n", ip)).to_string());
     body.push_str("t=0 0\r\n");
     body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
@@ -150,7 +150,7 @@ pub fn trying(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::Sip
         ))
         .into(),
     );
-    headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
+    headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
 
     let response: SipMessage = rsip::Response {
         status_code: rsip::StatusCode::Trying,

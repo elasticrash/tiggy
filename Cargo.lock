@@ -584,23 +584,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "533494a8f9b724d33625ab53c6c4800f7cc445895924a8ef649222dcb76e938b"
 
 [[package]]
-name = "sippy"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "get_if_addrs",
- "md5",
- "nom",
- "phf",
- "rand",
- "rsip",
- "serde",
- "serde_json",
- "tui",
- "uuid",
-]
-
-[[package]]
 name = "smallvec"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -621,6 +604,23 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "tiggy"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "get_if_addrs",
+ "md5",
+ "nom",
+ "phf",
+ "rand",
+ "rsip",
+ "serde",
+ "serde_json",
+ "tui",
+ "uuid",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-use rsip::{Header, Headers};
+use rsip::{prelude::{HeadersExt, ToTypedHeader}, Header, Headers, SipMessage};
 
 pub trait CustomHeaderExtension {
     fn get_via_header_array(&self) -> Vec<&Header>;
@@ -28,5 +28,44 @@ impl CustomHeaderExtension for Headers {
         for hd in new_headers {
             self.push(hd.clone().into());
         }
+    }
+}
+
+pub trait PartialHeaderClone {
+    fn partial_header_clone(&self) -> Headers;
+}
+
+impl PartialHeaderClone for SipMessage {
+    fn partial_header_clone(&self) -> Headers {
+        let mut headers: Headers = Default::default();
+        headers.push(self.via_header().unwrap().clone().into());
+        headers.push(self.max_forwards_header().unwrap().clone().into());
+        headers.push(self.from_header().unwrap().clone().into());
+        headers.push(self.to_header().unwrap().clone().into());
+        headers.push(self.contact_header().unwrap().clone().into());
+        headers.push(self.call_id_header().unwrap().clone().into());
+
+        let cseq = self.cseq_header().unwrap().typed().unwrap();
+
+        headers.push(
+            rsip::typed::CSeq {
+                seq: cseq.seq + 1,
+                method: cseq.method,
+            }
+            .into(),
+        );
+
+        headers.push(
+            rsip::headers::Allow::from(
+                "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+            )
+            .into(),
+        );
+
+        headers.push(
+            rsip::headers::ContentLength::from(self.body().len().to_string())
+                .into(),
+        );
+        headers
     }
 }
