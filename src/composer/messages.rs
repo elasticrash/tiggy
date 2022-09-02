@@ -68,7 +68,7 @@ pub fn ok(
         ))
         .into(),
     );
-    headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
+    headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
     headers.push(Header::ContentType(ContentType::new("application/sdp")).into());
 
     let mut body = "v=0\r\n".to_string();
@@ -150,7 +150,7 @@ pub fn trying(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::Sip
         ))
         .into(),
     );
-    headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
+    headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
 
     let response: SipMessage = rsip::Response {
         status_code: rsip::StatusCode::Trying,

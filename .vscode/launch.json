@@ -8,7 +8,7 @@
             "name": "Rust",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/sippy.exe",
+            "program": "${workspaceFolder}/target/debug/tiggy.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

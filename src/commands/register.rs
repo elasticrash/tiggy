@@ -88,7 +88,7 @@ impl Start for Register {
             .into(),
         );
         headers.push(
-            Header::CallId(CallId::new(format!("{}tippy", Uuid::new_v4().to_string()))).into(),
+            Header::CallId(CallId::new(format!("{}Tiggy", Uuid::new_v4().to_string()))).into(),
         );
         headers.push(
             rsip::typed::CSeq {
@@ -120,7 +120,7 @@ impl Start for Register {
             ))
             .into(),
         );
-        headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
+        headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
 
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,

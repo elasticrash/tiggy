@@ -101,7 +101,7 @@ impl Start for Ack {
             ))
             .into(),
         );
-        headers.push(Header::UserAgent(UserAgent::new("Tippy")).into());
+        headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
 
         headers.push(
             rsip::typed::Via {
