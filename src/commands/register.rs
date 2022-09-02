@@ -1,9 +1,9 @@
 use rsip::headers::{Allow, CallId, UntypedHeader, UserAgent};
-use rsip::message::HeadersExt;
 use rsip::{headers::auth, Header, SipMessage};
 use uuid::Uuid;
 
-use crate::composer::communication::{Auth, Call, Trying};
+use crate::composer::communication::{Auth, Trying, Start};
+use crate::composer::header_extension::PartialHeaderClone;
 use crate::config::JSONConfiguration;
 use crate::helper::auth::calculate_md5;
 
@@ -36,8 +36,8 @@ impl Auth for Register {
     }
 }
 
-impl Call for Register {
-    fn ask(&self) -> SipMessage {
+impl Start for Register {
+    fn set(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
 
         let base_uri = rsip::Uri {
@@ -145,70 +145,8 @@ impl Call for Register {
 
 impl Trying for Register {
     fn attempt(&self) -> SipMessage {
-        let mut headers: rsip::Headers = Default::default();
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .via_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .max_forwards_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .from_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .to_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .contact_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-        headers.push(
-            self.msg
-                .as_ref()
-                .unwrap()
-                .call_id_header()
-                .unwrap()
-                .clone()
-                .into(),
-        );
-
-        headers.push(
-            rsip::typed::CSeq {
-                seq: 2,
-                method: rsip::Method::Register,
-            }
-            .into(),
-        );
-
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
+        
         headers.push(
             rsip::typed::Authorization {
                 scheme: auth::Scheme::Digest,
@@ -251,7 +189,7 @@ impl Trying for Register {
                 ..Default::default()
             },
             version: rsip::Version::V2,
-            headers: headers,
+            headers: headers.clone(),
             body: Default::default(),
         }
         .into();

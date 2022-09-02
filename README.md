@@ -1,6 +1,6 @@
 #SIPPY
 ----------
-A Non Media enabled cli softphone
+A Naive implementation of non Media enabled cli softphone
 
 
 `This is a work in progress and at this stage it is based on a log of assumptions on the underlying structure`
@@ -8,7 +8,7 @@ A Non Media enabled cli softphone
 Featues:
 
 * Autoanswers incoming calls
-
+* Outbound calls (partial working)
 
 ### Config
   ```JSON

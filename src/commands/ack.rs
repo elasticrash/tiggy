@@ -2,7 +2,7 @@ use rsip::headers::{Allow, UntypedHeader, UserAgent};
 use rsip::{Header, SipMessage};
 use uuid::Uuid;
 
-use crate::composer::communication::{Auth, Call, Trying};
+use crate::composer::communication::{Start};
 
 #[derive(Clone)]
 pub struct Ack {
@@ -16,8 +16,8 @@ pub struct Ack {
 }
 
 
-impl Call for Ack {
-    fn ask(&self) -> SipMessage {
+impl Start for Ack {
+    fn set(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = rsip::Uri {
             auth: None,
@@ -60,7 +60,17 @@ impl Call for Ack {
         headers.push(
             rsip::typed::To {
                 display_name: Some(format!("{}", &self.cld.as_ref().unwrap().to_string(),)),
-                uri: base_uri.clone(),
+                uri:  rsip::Uri {
+                    auth: None,
+                    host_with_port: rsip::Domain::from(format!(
+                        "sip:{}@{}:{}",
+                        &self.cld.as_ref().unwrap().to_string(),
+                        &self.sip_server,
+                        &self.sip_port
+                    ))
+                    .into(),
+                    ..Default::default()
+                },
                 params: Default::default(),
             }
             .into(),
@@ -118,7 +128,7 @@ impl Call for Ack {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
                     "{}@{}:{}",
-                    &self.cld.as_ref().unwrap().to_string(),
+                    &self.username,
                     &self.sip_server,
                     &self.sip_port
                 ))

@@ -1,7 +1,7 @@
 use crate::{
     commands::register::Register,
     composer::{
-        communication::{Auth, Call, Trying},
+        communication::{Auth, Trying, Start},
         messages::{ok, trying},
     },
     config::JSONConfiguration,
@@ -42,7 +42,7 @@ pub fn inbound_start<'a>(conf: &'a JSONConfiguration, ip: &'a IpAddr) -> RefCell
 
     return RefCell::new(InboundInit {
         reg: register.clone(),
-        msg: register.clone().ask().to_string(),
+        msg: register.clone().set().to_string(),
     });
 }
 
