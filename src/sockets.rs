@@ -37,7 +37,7 @@ pub fn receive(
 
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];
-    let r_message_a = String::from_utf8_lossy(&slice);
+    let r_message_a = String::from_utf8_lossy(slice);
     print_msg(r_message_a.to_string(), s, logs);
 
     SipMessage::try_from(r_message_a.to_string())

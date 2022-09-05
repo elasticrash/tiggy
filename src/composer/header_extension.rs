@@ -1,4 +1,7 @@
-use rsip::{prelude::{HeadersExt, ToTypedHeader}, Header, Headers, SipMessage};
+use rsip::{
+    prelude::{HeadersExt, ToTypedHeader},
+    Header, Headers, SipMessage,
+};
 
 pub trait CustomHeaderExtension {
     fn get_via_header_array(&self) -> Vec<&Header>;
@@ -9,24 +12,18 @@ pub trait CustomHeaderExtension {
 impl CustomHeaderExtension for Headers {
     fn get_via_header_array(&self) -> Vec<&Header> {
         self.iter()
-            .filter(|h| match h {
-                Header::Via(_) => return true,
-                _ => return false,
-            })
+            .filter(|h| matches!(h, Header::Via(_)))
             .collect()
     }
     fn get_record_route_header_array(&self) -> Vec<&Header> {
         self.iter()
-            .filter(|h| match h {
-                Header::RecordRoute(_) => return true,
-                _ => return false,
-            })
+            .filter(|h| matches!(h, Header::RecordRoute(_)))
             .collect()
     }
 
     fn push_many(&mut self, new_headers: Vec<&Header>) {
         for hd in new_headers {
-            self.push(hd.clone().into());
+            self.push(hd.clone());
         }
     }
 }
@@ -44,6 +41,7 @@ impl PartialHeaderClone for SipMessage {
         headers.push(self.to_header().unwrap().clone().into());
         headers.push(self.contact_header().unwrap().clone().into());
         headers.push(self.call_id_header().unwrap().clone().into());
+        headers.push(self.user_agent_header().unwrap().clone().into());
 
         let cseq = self.cseq_header().unwrap().typed().unwrap();
 
@@ -62,10 +60,7 @@ impl PartialHeaderClone for SipMessage {
             .into(),
         );
 
-        headers.push(
-            rsip::headers::ContentLength::from(self.body().len().to_string())
-                .into(),
-        );
+        headers.push(rsip::headers::ContentLength::from(self.body().len().to_string()).into());
         headers
     }
 }

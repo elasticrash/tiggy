@@ -13,7 +13,7 @@ pub struct JSONConfiguration {
 }
 
 pub fn read(filename: &str) -> serde_json::Result<JSONConfiguration> {
-    return match File::open(filename) {
+    match File::open(filename) {
         Ok(mut file) => {
             let mut buffer = String::new();
             file.read_to_string(&mut buffer).unwrap();
@@ -21,5 +21,5 @@ pub fn read(filename: &str) -> serde_json::Result<JSONConfiguration> {
             Ok(config)
         }
         Err(_why) => panic!("file not found"),
-    };
+    }
 }

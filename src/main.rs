@@ -64,7 +64,7 @@ fn main() -> Result<(), io::Error> {
         .into_iter()
         .find(|ip| {
             print_msg(
-                format!("available interface:, {}", ip.addr.ip()).to_string(),
+                format!("available interface:, {}", ip.addr.ip()),
                 false,
                 &logs,
             );
@@ -194,62 +194,59 @@ fn main() -> Result<(), io::Error> {
 
                 let action_menu = Arc::new(build_menu());
 
-                match rx.try_recv() {
-                    Ok(code) => {
-                        let mut command = String::from(code);
-                        let mut argument: String = "".to_string();
-                        log::slog(
-                            format!("received command, {}", command).as_str(),
-                            &thread_logs,
-                        );
+                if let Ok(code) = rx.try_recv() {
+                    let mut command = String::from(code);
+                    let mut argument: String = "".to_string();
+                    log::slog(
+                        format!("received command, {}", command).as_str(),
+                        &thread_logs,
+                    );
 
-                        if command.len() > 1 {
-                            let split_command = command.split('|').collect::<Vec<&str>>();
-                            argument = split_command[1].to_string();
-                            command = split_command[0].to_string();
-                        }
-
-                        if !is_string_numeric(argument.clone()) {
-                            command = "invalid_argument".to_string();
-                        }
-
-                        let key_code_command = KeyCode::Char(command.chars().next().unwrap());
-
-                        match action_menu.iter().find(|&x| x.value == key_code_command) {
-                            Some(item) => match item.category {
-                                menu::builder::MenuType::Exit => {
-                                    break 'thread;
-                                }
-                                menu::builder::MenuType::Silent => {
-                                    silent = !silent;
-                                }
-                                menu::builder::MenuType::Dial => {
-                                    flow = Flow::Outbound;
-                                    {
-                                        let mut shared = shared_out.borrow_mut();
-                                        shared.inv.cld = Some(argument.clone());
-                                        shared.msg =
-                                            shared.inv.clone().init(argument.clone()).to_string();
-                                    }
-                                    outbound_start(
-                                        &mut socket,
-                                        &conf,
-                                        &shared_out,
-                                        silent,
-                                        argument.clone(),
-                                        &thread_logs,
-                                    );
-                                }
-                                menu::builder::MenuType::Answer => todo!(),
-                                _ => log::slog(
-                                    format!("{} Not supported", command).as_str(),
-                                    &thread_logs,
-                                ),
-                            },
-                            None => todo!(),
-                        }
+                    if command.len() > 1 {
+                        let split_command = command.split('|').collect::<Vec<&str>>();
+                        argument = split_command[1].to_string();
+                        command = split_command[0].to_string();
                     }
-                    Err(_) => {}
+
+                    if !is_string_numeric(argument.clone()) {
+                        command = "invalid_argument".to_string();
+                    }
+
+                    let key_code_command = KeyCode::Char(command.chars().next().unwrap());
+
+                    match action_menu.iter().find(|&x| x.value == key_code_command) {
+                        Some(item) => match item.category {
+                            menu::builder::MenuType::Exit => {
+                                break 'thread;
+                            }
+                            menu::builder::MenuType::Silent => {
+                                silent = !silent;
+                            }
+                            menu::builder::MenuType::Dial => {
+                                flow = Flow::Outbound;
+                                {
+                                    let mut shared = shared_out.borrow_mut();
+                                    shared.inv.cld = Some(argument.clone());
+                                    shared.msg =
+                                        shared.inv.clone().init(argument.clone()).to_string();
+                                }
+                                outbound_start(
+                                    &mut socket,
+                                    &conf,
+                                    &shared_out,
+                                    silent,
+                                    argument.clone(),
+                                    &thread_logs,
+                                );
+                            }
+                            menu::builder::MenuType::Answer => todo!(),
+                            _ => log::slog(
+                                format!("{} Not supported", command).as_str(),
+                                &thread_logs,
+                            ),
+                        },
+                        None => todo!(),
+                    }
                 }
             }
         })
@@ -325,8 +322,7 @@ fn menu_and_refresh<B: Backend>(
                     InputMode::Editing => match key.code {
                         KeyCode::Enter => {
                             app.input_mode = InputMode::Normal;
-                            tx
-                                .send(format!("d|{}", app.input.trim().to_owned()))
+                            tx.send(format!("d|{}", app.input.trim().to_owned()))
                                 .unwrap();
                         }
                         KeyCode::Char(c) => {

@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::composer::communication::{Auth, Call, Trying};
 use crate::config::JSONConfiguration;
 use crate::helper::auth::calculate_md5;
+use std::fmt::Write;
 
 #[derive(Clone)]
 pub struct Invite {
@@ -25,11 +26,11 @@ impl Auth for Invite {
         let md5 = calculate_md5(
             &conf.username,
             &conf.password,
-            &format!("{}", &self.sip_server),
+            &self.sip_server,
             &self.extension,
             &self.sip_server,
             &self.sip_port,
-            &self.nonce.as_ref().unwrap(),
+            self.nonce.as_ref().unwrap(),
             &String::from("INVITE"),
         );
         self.md5 = Some(md5);
@@ -69,7 +70,7 @@ impl Call for Invite {
         );
         headers.push(
             rsip::typed::From {
-                display_name: Some(format!("{}", &self.username.to_string(),)),
+                display_name: Some(self.username.to_string()),
                 uri: base_uri.clone(),
                 params: vec![rsip::Param::Tag(rsip::param::Tag::new(
                     Uuid::new_v4().to_string(),
@@ -79,7 +80,7 @@ impl Call for Invite {
         );
         headers.push(
             rsip::typed::To {
-                display_name: Some(format!("{}", &self.cld.as_ref().unwrap().to_string(),)),
+                display_name: Some(self.cld.as_ref().unwrap().to_string()),
                 uri: rsip::Uri {
                     auth: None,
                     host_with_port: rsip::Domain::from(format!(
@@ -100,7 +101,7 @@ impl Call for Invite {
 
         headers.push(
             rsip::typed::Contact {
-                display_name: Some(format!("{}", &self.username.to_string())),
+                display_name: Some(self.username.to_string()),
                 uri: base_uri,
                 params: Default::default(),
             }
@@ -121,7 +122,7 @@ impl Call for Invite {
             .into(),
         );
 
-        headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
+        headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
 
         headers.push(
             rsip::typed::Via {
@@ -143,11 +144,9 @@ impl Call for Invite {
         );
 
         let mut body = "v=0\r\n".to_string();
-        body.push_str(
-            &(format!("o=tggVCE 226678890 391916715 IN IP4 {}\r\n", &self.ip)).to_string(),
-        );
+        let _ = write!(body, "o=tggVCE 226678890 391916715 IN IP4 {}\r\n", &self.ip);
         body.push_str("s=tggVCE Audio Call\r\n");
-        body.push_str(&(format!("c=IN IP4 {}\r\n", &self.ip)).to_string());
+        let _ = write!(body, "c=IN IP4 {}\r\n", &self.ip);
         body.push_str("t=0 0\r\n");
         body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
         body.push_str("a=rtpmap:0 PCMU/8000\r\n");
@@ -171,7 +170,7 @@ impl Call for Invite {
                 ..Default::default()
             },
             version: rsip::Version::V2,
-            headers: headers,
+            headers,
             body: body.as_bytes().to_vec(),
         }
         .into();
@@ -190,7 +189,7 @@ impl Trying for Invite {
             rsip::typed::Authorization {
                 scheme: auth::Scheme::Digest,
                 username: self.username.to_string(),
-                realm: format!("{}", &self.sip_server),
+                realm: self.sip_server.to_string(),
                 nonce: self.nonce.as_ref().unwrap().to_string(),
                 uri: rsip::Uri {
                     scheme: Some(rsip::Scheme::Sip),

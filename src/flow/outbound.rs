@@ -1,5 +1,5 @@
 use crate::{
-    commands::{invite::Invite},
+    commands::invite::Invite,
     composer::{
         communication::{Auth, Call, Trying},
         messages::ok,
@@ -38,10 +38,10 @@ pub fn outbound_configure(conf: &JSONConfiguration, ip: &IpAddr) -> RefCell<Outb
         nonce: None,
     };
 
-    return RefCell::new(OutboundInit {
+    RefCell::new(OutboundInit {
         inv: invite.clone(),
         msg: invite.init("".to_string()).to_string(),
-    });
+    })
 }
 
 pub fn outbound_start(
@@ -101,7 +101,7 @@ pub fn outbound_request_flow(
                 silent,
                 logs,
             );
-        },
+        }
         Method::Cancel => todo!(),
         Method::Info => todo!(),
         Method::Invite => todo!(),
@@ -114,7 +114,7 @@ pub fn outbound_request_flow(
                     port: 5060,
                 },
                 ok(
-                    &conf,
+                    conf,
                     &ip.clone().to_string(),
                     &request,
                     rsip::Method::Options,
@@ -133,7 +133,7 @@ pub fn outbound_request_flow(
         Method::Subscribe => todo!(),
         Method::Update => todo!(),
     }
-    request.clone().method
+    request.method
 }
 pub fn outbound_response_flow(
     response: &Response,
@@ -163,7 +163,7 @@ pub fn outbound_response_flow(
             .unwrap();
 
             state_ref.inv.nonce = Some(auth.nonce);
-            state_ref.inv.set_auth(&conf);
+            state_ref.inv.set_auth(conf);
             state_ref.inv.msg = Some(msg);
 
             send(

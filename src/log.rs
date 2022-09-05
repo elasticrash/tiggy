@@ -2,8 +2,9 @@ use std::{
     collections::VecDeque,
     fs::{File, OpenOptions},
     io::prelude::*,
+    path::Path,
     sync::{Arc, Mutex},
-    thread, path::Path,
+    thread,
 };
 
 use tui::{

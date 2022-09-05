@@ -25,11 +25,11 @@ impl Auth for Register {
         let md5 = calculate_md5(
             &conf.username,
             &conf.password,
-            &format!("{}", &self.sip_server),
+            &self.sip_server.to_string(),
             &self.extension,
             &self.sip_server,
             &self.sip_port,
-            &self.nonce.as_ref().unwrap(),
+            self.nonce.as_ref().unwrap(),
             &String::from("REGISTER"),
         );
         self.md5 = Some(md5);
@@ -70,7 +70,7 @@ impl Start for Register {
         );
         headers.push(
             rsip::typed::From {
-                display_name: Some(format!("{}", &self.username.to_string(),)),
+                display_name: Some(self.username.to_string()),
                 uri: base_uri.clone(),
                 params: vec![rsip::Param::Tag(rsip::param::Tag::new(
                     Uuid::new_v4().to_string(),
@@ -81,15 +81,16 @@ impl Start for Register {
         headers.push(rsip::headers::MaxForwards::from(70).into());
         headers.push(
             rsip::typed::To {
-                display_name: Some(format!("{}", &self.username.to_string(),)),
-                uri: base_uri.clone(),
+                display_name: Some(self.username.to_string()),
+                uri: base_uri,
                 params: Default::default(),
             }
             .into(),
         );
-        headers.push(
-            Header::CallId(CallId::new(format!("{}Tiggy", Uuid::new_v4().to_string()))).into(),
-        );
+        headers.push(Header::CallId(CallId::new(format!(
+            "{}-tiggy",
+            Uuid::new_v4()
+        ))));
         headers.push(
             rsip::typed::CSeq {
                 seq: 1,
@@ -100,7 +101,7 @@ impl Start for Register {
 
         headers.push(
             rsip::typed::Contact {
-                display_name: Some(format!("{}", &self.username.to_string(),)),
+                display_name: Some(self.username.to_string()),
                 uri: rsip::Uri {
                     host_with_port: (rsip::Domain::from(format!(
                         "sip:{}@{}:{}",
@@ -114,13 +115,10 @@ impl Start for Register {
             .into(),
         );
         headers.push(rsip::headers::ContentLength::default().into());
-        headers.push(
-            Header::Allow(Allow::new(
-                "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-            ))
-            .into(),
-        );
-        headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
+        headers.push(Header::Allow(Allow::new(
+            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+        )));
+        headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
 
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,
@@ -134,7 +132,7 @@ impl Start for Register {
                 ..Default::default()
             },
             version: rsip::Version::V2,
-            headers: headers,
+            headers,
             body: Default::default(),
         }
         .into();
@@ -151,7 +149,7 @@ impl Trying for Register {
             rsip::typed::Authorization {
                 scheme: auth::Scheme::Digest,
                 username: self.username.to_string(),
-                realm: format!("{}", &self.sip_server),
+                realm: self.sip_server.to_string(),
                 nonce: self.nonce.as_ref().unwrap().to_string(),
                 uri: rsip::Uri {
                     scheme: Some(rsip::Scheme::Sip),
@@ -169,12 +167,9 @@ impl Trying for Register {
             }
             .into(),
         );
-        headers.push(
-            Header::Allow(Allow::new(
-                "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-            ))
-            .into(),
-        );
+        headers.push(Header::Allow(Allow::new(
+            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+        )));
 
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,

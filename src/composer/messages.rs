@@ -5,6 +5,7 @@ use rsip::param::Tag;
 use rsip::Request;
 use rsip::{message::HeadersExt, Header, SipMessage};
 use rsip::{Method, Param};
+use std::fmt::Write;
 use uuid::Uuid;
 
 pub fn ok(
@@ -29,9 +30,8 @@ pub fn ok(
     headers.push_many(req.headers.get_record_route_header_array());
     headers.push(req.via_header().unwrap().clone().into());
 
-    match req.max_forwards_header() {
-        Ok(_) => headers.push(req.max_forwards_header().unwrap().clone().into()),
-        Err(_) => {}
+    if req.max_forwards_header().is_ok() {
+        headers.push(req.max_forwards_header().unwrap().clone().into())
     }
 
     headers.push(req.from_header().unwrap().clone().into());
@@ -41,14 +41,14 @@ pub fn ok(
     headers.push(
         rsip::typed::To {
             display_name: to.display_name.clone(),
-            uri: to.uri.clone(),
+            uri: to.uri,
             params: vec![Param::Tag(Tag::new(Uuid::new_v4().to_string()))],
         }
         .into(),
     );
     headers.push(
         rsip::typed::Contact {
-            display_name: Some(format!("{}", conf.username.to_string(),)),
+            display_name: Some(conf.username.to_string()),
             uri: base_uri,
             params: Default::default(),
         }
@@ -58,22 +58,20 @@ pub fn ok(
     headers.push(
         rsip::typed::CSeq {
             seq: cseq.seq,
-            method: method,
+            method,
         }
         .into(),
     );
-    headers.push(
-        Header::Allow(Allow::new(
-            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-        )),
-    );
-    headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
-    headers.push(Header::ContentType(ContentType::new("application/sdp")).into());
+    headers.push(Header::Allow(Allow::new(
+        "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+    )));
+    headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
+    headers.push(Header::ContentType(ContentType::new("application/sdp")));
 
     let mut body = "v=0\r\n".to_string();
-    body.push_str(&(format!("o=tggVCE 226678890 391916715 IN IP4 {}\r\n", ip)).to_string());
+    let _ = write!(body, "o=tggVCE 226678890 391916715 IN IP4 {}\r\n", ip);
     body.push_str("s=tggVCE Audio Call\r\n");
-    body.push_str(&(format!("c=IN IP4 {}\r\n", ip)).to_string());
+    let _ = write!(body, "c=IN IP4 {}\r\n", ip);
     body.push_str("t=0 0\r\n");
     body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
     body.push_str("a=rtpmap:0 PCMU/8000\r\n");
@@ -81,12 +79,14 @@ pub fn ok(
     body.push_str("a=rtpmap:96 telephone-event/8000\r\n");
     body.push_str("a=fmtp:96 0-15\r\n");
 
-    headers.push(Header::ContentLength(ContentLength::new(body.len().to_string())).into());
+    headers.push(Header::ContentLength(ContentLength::new(
+        body.len().to_string(),
+    )));
 
     let response: SipMessage = rsip::Response {
         status_code: rsip::StatusCode::OK,
         version: rsip::Version::V2,
-        headers: headers,
+        headers,
         body: if sdp {
             body.as_bytes().to_vec()
         } else {
@@ -143,17 +143,15 @@ pub fn trying(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::Sip
         }
         .into(),
     );
-    headers.push(
-        Header::Allow(Allow::new(
-            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-        )),
-    );
-    headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
+    headers.push(Header::Allow(Allow::new(
+        "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+    )));
+    headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
 
     let response: SipMessage = rsip::Response {
         status_code: rsip::StatusCode::Trying,
         version: rsip::Version::V2,
-        headers: headers,
+        headers,
         body: Default::default(),
     }
     .into();

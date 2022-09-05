@@ -1,11 +1,12 @@
 use crate::{
     commands::register::Register,
     composer::{
-        communication::{Auth, Trying, Start},
+        communication::{Auth, Start, Trying},
         messages::{ok, trying},
     },
     config::JSONConfiguration,
-    sockets::{send, SocketV4}, log,
+    log,
+    sockets::{send, SocketV4},
 };
 use rsip::{
     header_opt,
@@ -40,10 +41,10 @@ pub fn inbound_start<'a>(conf: &'a JSONConfiguration, ip: &'a IpAddr) -> RefCell
         msg: None,
     };
 
-    return RefCell::new(InboundInit {
+    RefCell::new(InboundInit {
         reg: register.clone(),
         msg: register.set().to_string(),
-    });
+    })
 }
 
 pub fn inbound_request_flow(
@@ -58,7 +59,7 @@ pub fn inbound_request_flow(
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
     log::slog(
-        format!("received inbound request, {}", request.clone().method).as_str(),
+        format!("received inbound request, {}", request.method).as_str(),
         logs,
     );
 
@@ -72,7 +73,7 @@ pub fn inbound_request_flow(
                     port: 5060,
                 },
                 ok(
-                    &conf,
+                    conf,
                     &ip.clone().to_string(),
                     &request,
                     rsip::Method::Bye,
@@ -92,7 +93,7 @@ pub fn inbound_request_flow(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                trying(&conf, &ip.clone().to_string(), &request).to_string(),
+                trying(conf, &ip.clone().to_string(), &request).to_string(),
                 socket,
                 silent,
                 logs,
@@ -104,7 +105,7 @@ pub fn inbound_request_flow(
                     port: 5060,
                 },
                 ok(
-                    &conf,
+                    conf,
                     &ip.clone().to_string(),
                     &request,
                     rsip::Method::Invite,
@@ -143,7 +144,7 @@ pub fn inbound_request_flow(
         rsip::Method::Subscribe => {}
         rsip::Method::Update => {}
     }
-    return request.clone().method;
+    request.method
 }
 
 pub fn inbound_response_flow(
@@ -158,8 +159,8 @@ pub fn inbound_response_flow(
     let msg: SipMessage = SipMessage::try_from(state_ref.msg.clone()).unwrap();
 
     log::slog(
-        format!("received inbound response, {}",  response.status_code).as_str(),
-        &logs,
+        format!("received inbound response, {}", response.status_code).as_str(),
+        logs,
     );
 
     match response.status_code {
@@ -172,7 +173,7 @@ pub fn inbound_response_flow(
             .unwrap();
 
             state_ref.reg.nonce = Some(auth.nonce);
-            state_ref.reg.set_auth(&conf);
+            state_ref.reg.set_auth(conf);
             state_ref.reg.msg = Some(msg);
 
             send(
@@ -190,5 +191,5 @@ pub fn inbound_response_flow(
         StatusCode::OK => {}
         _ => {}
     }
-    return response.status_code.clone();
+    response.status_code.clone()
 }

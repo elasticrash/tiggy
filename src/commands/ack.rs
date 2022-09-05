@@ -2,7 +2,7 @@ use rsip::headers::{Allow, UntypedHeader, UserAgent};
 use rsip::{Header, SipMessage};
 use uuid::Uuid;
 
-use crate::composer::communication::{Start};
+use crate::composer::communication::Start;
 
 #[derive(Clone)]
 pub struct Ack {
@@ -14,7 +14,6 @@ pub struct Ack {
     pub msg: Option<SipMessage>,
     pub cld: Option<String>,
 }
-
 
 impl Start for Ack {
     fn set(&self) -> SipMessage {
@@ -49,7 +48,7 @@ impl Start for Ack {
         );
         headers.push(
             rsip::typed::From {
-                display_name: Some(format!("{}", &self.username.to_string(),)),
+                display_name: Some(self.username.to_string()),
                 uri: base_uri.clone(),
                 params: vec![rsip::Param::Tag(rsip::param::Tag::new(
                     Uuid::new_v4().to_string(),
@@ -59,8 +58,8 @@ impl Start for Ack {
         );
         headers.push(
             rsip::typed::To {
-                display_name: Some(format!("{}", &self.cld.as_ref().unwrap().to_string(),)),
-                uri:  rsip::Uri {
+                display_name: Some(self.cld.as_ref().unwrap().to_string()),
+                uri: rsip::Uri {
                     auth: None,
                     host_with_port: rsip::Domain::from(format!(
                         "sip:{}@{}:{}",
@@ -80,7 +79,7 @@ impl Start for Ack {
 
         headers.push(
             rsip::typed::Contact {
-                display_name: Some(format!("{}", &self.username.to_string())),
+                display_name: Some(self.username.to_string()),
                 uri: base_uri,
                 params: Default::default(),
             }
@@ -95,13 +94,10 @@ impl Start for Ack {
             .into(),
         );
         headers.push(rsip::headers::ContentLength::default().into());
-        headers.push(
-            Header::Allow(Allow::new(
-                "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-            ))
-            .into(),
-        );
-        headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
+        headers.push(Header::Allow(Allow::new(
+            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
+        )));
+        headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
 
         headers.push(
             rsip::typed::Via {
@@ -128,15 +124,13 @@ impl Start for Ack {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
                     "{}@{}:{}",
-                    &self.username,
-                    &self.sip_server,
-                    &self.sip_port
+                    &self.username, &self.sip_server, &self.sip_port
                 ))
                 .into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,
-            headers: headers,
+            headers,
             body: Default::default(),
         }
         .into();
