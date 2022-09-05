@@ -65,8 +65,7 @@ pub fn ok(
     headers.push(
         Header::Allow(Allow::new(
             "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-        ))
-        .into(),
+        )),
     );
     headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
     headers.push(Header::ContentType(ContentType::new("application/sdp")).into());
@@ -130,7 +129,7 @@ pub fn trying(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::Sip
     headers.push(req.to_header().unwrap().clone().into());
     headers.push(
         rsip::typed::Contact {
-            display_name: Some(format!("{}", conf.username.to_string(),)),
+            display_name: Some(conf.username.to_string()),
             uri: base_uri,
             params: Default::default(),
         }
@@ -147,8 +146,7 @@ pub fn trying(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::Sip
     headers.push(
         Header::Allow(Allow::new(
             "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-        ))
-        .into(),
+        )),
     );
     headers.push(Header::UserAgent(UserAgent::new("Tiggy")).into());
 

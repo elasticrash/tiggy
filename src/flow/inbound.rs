@@ -42,7 +42,7 @@ pub fn inbound_start<'a>(conf: &'a JSONConfiguration, ip: &'a IpAddr) -> RefCell
 
     return RefCell::new(InboundInit {
         reg: register.clone(),
-        msg: register.clone().set().to_string(),
+        msg: register.set().to_string(),
     });
 }
 
@@ -59,10 +59,10 @@ pub fn inbound_request_flow(
 
     log::slog(
         format!("received inbound request, {}", request.clone().method).as_str(),
-        &logs,
+        logs,
     );
 
-    match request.clone().method {
+    match request.method {
         rsip::Method::Register => {}
         rsip::Method::Ack => {}
         rsip::Method::Bye => {
@@ -81,7 +81,7 @@ pub fn inbound_request_flow(
                 .to_string(),
                 socket,
                 silent,
-                &logs,
+                logs,
             );
         }
         rsip::Method::Cancel => {}
@@ -95,7 +95,7 @@ pub fn inbound_request_flow(
                 trying(&conf, &ip.clone().to_string(), &request).to_string(),
                 socket,
                 silent,
-                &logs,
+                logs,
             );
             thread::sleep(Duration::from_secs(1));
             send(
@@ -125,7 +125,7 @@ pub fn inbound_request_flow(
                     port: 5060,
                 },
                 ok(
-                    &conf,
+                    conf,
                     &ip.clone().to_string(),
                     &request,
                     rsip::Method::Options,

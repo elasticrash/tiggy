@@ -11,7 +11,7 @@ pub fn calculate_md5(
     let ha1 = format!("{}:{}:{}", username, realm, password);
     let ha2 = format!(
         "{}:sip:{}@{}:{}",
-        method.to_string(),
+        method,
         extension,
         sip_server,
         sip_port

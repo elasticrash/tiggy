@@ -38,5 +38,5 @@ pub fn build_menu() -> Vec<MenuItem> {
         value: KeyCode::Char('a'),
     });
 
-    return menu;
+    menu
 }

@@ -19,7 +19,7 @@ pub fn send(
     s: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
-    log_out(&logs);
+    log_out(logs);
     print_msg(msg.clone(), s, logs);
 
     socket
@@ -33,12 +33,12 @@ pub fn receive(
     s: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) -> Result<SipMessage, rsip::Error> {
-    log_in(&logs);
+    log_in(logs);
 
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];
     let r_message_a = String::from_utf8_lossy(&slice);
-    print_msg(r_message_a.to_string(), s, &logs);
+    print_msg(r_message_a.to_string(), s, logs);
 
     SipMessage::try_from(r_message_a.to_string())
 }
