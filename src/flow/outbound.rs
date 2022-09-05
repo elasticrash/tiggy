@@ -40,7 +40,7 @@ pub fn outbound_configure(conf: &JSONConfiguration, ip: &IpAddr) -> RefCell<Outb
 
     return RefCell::new(OutboundInit {
         inv: invite.clone(),
-        msg: invite.clone().init("".to_string()).to_string(),
+        msg: invite.init("".to_string()).to_string(),
     });
 }
 
@@ -77,11 +77,11 @@ pub fn outbound_request_flow(
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
     log::slog(
-        format!("received outbound request, {}", request.clone().method).as_str(),
-        &logs,
+        format!("received outbound request, {}", request.method).as_str(),
+        logs,
     );
 
-    match request.clone().method {
+    match request.method {
         Method::Ack => todo!(),
         Method::Bye => {
             send(
@@ -90,7 +90,7 @@ pub fn outbound_request_flow(
                     port: 5060,
                 },
                 ok(
-                    &conf,
+                    conf,
                     &ip.clone().to_string(),
                     &request,
                     rsip::Method::Bye,
@@ -99,7 +99,7 @@ pub fn outbound_request_flow(
                 .to_string(),
                 socket,
                 silent,
-                &logs,
+                logs,
             );
         },
         Method::Cancel => todo!(),
@@ -133,7 +133,7 @@ pub fn outbound_request_flow(
         Method::Subscribe => todo!(),
         Method::Update => todo!(),
     }
-    return request.clone().method;
+    request.clone().method
 }
 pub fn outbound_response_flow(
     response: &Response,
@@ -149,7 +149,7 @@ pub fn outbound_response_flow(
 
     log::slog(
         format!("received outbound response, {}", response.status_code).as_str(),
-        &logs,
+        logs,
     );
 
     match response.status_code {
@@ -202,5 +202,5 @@ pub fn outbound_response_flow(
         }
         _ => todo!(),
     }
-    return response.status_code.clone();
+    response.status_code.clone()
 }

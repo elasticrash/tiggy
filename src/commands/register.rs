@@ -169,7 +169,6 @@ impl Trying for Register {
             }
             .into(),
         );
-        headers.push(rsip::headers::ContentLength::default().into());
         headers.push(
             Header::Allow(Allow::new(
                 "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",

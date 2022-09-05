@@ -29,6 +29,7 @@ use flow::outbound::{
     outbound_configure, outbound_request_flow, outbound_response_flow, outbound_start,
 };
 use flow::Flow;
+use log::print_msg;
 use rsip::{Method, Response};
 use std::net::UdpSocket;
 use tui::backend::{Backend, CrosstermBackend};
@@ -54,19 +55,37 @@ macro_rules! skip_fail {
 }
 
 fn main() -> Result<(), io::Error> {
-    let conf = config::read("./config.json").unwrap();
-    let ip = get_if_addrs::get_if_addrs().unwrap()[0].addr.ip();
-    let (tx, rx) = mpsc::channel();
     let logs = Arc::new(Mutex::from(VecDeque::new()));
+    let thread_logs = Arc::clone(&logs);
+
+    let conf = config::read("./config.json").unwrap();
+    let is_there_an_ipv4 = get_if_addrs::get_if_addrs()
+        .unwrap()
+        .into_iter()
+        .find(|ip| {
+            print_msg(
+                format!("available interface:, {}", ip.addr.ip()).to_string(),
+                false,
+                &logs,
+            );
+            ip.ip().is_ipv4()
+        });
+
+    let ip = match is_there_an_ipv4 {
+        Some(ipv4) => ipv4,
+        None => panic!("could not find an ipv4 interface"),
+    }
+    .addr
+    .ip();
+
+    let (tx, rx) = mpsc::channel();
 
     logs.lock().unwrap().push_back(format!(
         "<{:?}> [{}] - {:?}",
         thread::current().id(),
         line!(),
-        ip.to_string()
+        ip
     ));
-
-    let thread_logs = Arc::clone(&logs);
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -87,7 +106,7 @@ fn main() -> Result<(), io::Error> {
             let mut silent = false;
             let mut flow = Flow::Inbound;
 
-            let mut buffer = [0 as u8; 65535];
+            let mut buffer = [0_u8; 65535];
 
             let mut socket = UdpSocket::bind("0.0.0.0:5060").unwrap();
             let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
@@ -180,12 +199,12 @@ fn main() -> Result<(), io::Error> {
                         let mut command = String::from(code);
                         let mut argument: String = "".to_string();
                         log::slog(
-                            format!("received command, {}", command.to_string()).as_str(),
+                            format!("received command, {}", command).as_str(),
                             &thread_logs,
                         );
 
                         if command.len() > 1 {
-                            let split_command = command.split("|").collect::<Vec<&str>>();
+                            let split_command = command.split('|').collect::<Vec<&str>>();
                             argument = split_command[1].to_string();
                             command = split_command[0].to_string();
                         }
@@ -194,7 +213,7 @@ fn main() -> Result<(), io::Error> {
                             command = "invalid_argument".to_string();
                         }
 
-                        let key_code_command = KeyCode::Char(command.chars().nth(0).unwrap());
+                        let key_code_command = KeyCode::Char(command.chars().next().unwrap());
 
                         match action_menu.iter().find(|&x| x.value == key_code_command) {
                             Some(item) => match item.category {
@@ -209,7 +228,8 @@ fn main() -> Result<(), io::Error> {
                                     {
                                         let mut shared = shared_out.borrow_mut();
                                         shared.inv.cld = Some(argument.clone());
-                                        shared.msg = shared.inv.clone().init(argument.clone()).to_string();
+                                        shared.msg =
+                                            shared.inv.clone().init(argument.clone()).to_string();
                                     }
                                     outbound_start(
                                         &mut socket,
@@ -265,7 +285,7 @@ fn menu_and_refresh<B: Backend>(
     let mut last_tick = Instant::now();
 
     loop {
-        terminal.draw(|f| ui(f, &app, &logs))?;
+        terminal.draw(|f| ui(f, &app, logs))?;
         let timeout = app
             .tick_rate
             .checked_sub(last_tick.elapsed())
@@ -285,7 +305,7 @@ fn menu_and_refresh<B: Backend>(
                                     log::print_menu();
                                 }
                                 menu::builder::MenuType::Exit => {
-                                    log::slog("Terminating", &logs);
+                                    log::slog("Terminating", logs);
                                     thread::sleep(Duration::from_millis(300));
                                     return Ok(());
                                 }
@@ -300,12 +320,12 @@ fn menu_and_refresh<B: Backend>(
                                 }
                             }
                         }
-                        None => log::slog("Invalid Command", &logs),
+                        None => log::slog("Invalid Command", logs),
                     },
                     InputMode::Editing => match key.code {
                         KeyCode::Enter => {
                             app.input_mode = InputMode::Normal;
-                            let _ = tx
+                            tx
                                 .send(format!("d|{}", app.input.trim().to_owned()))
                                 .unwrap();
                         }
@@ -335,5 +355,5 @@ fn is_string_numeric(str: String) -> bool {
             return false;
         }
     }
-    return true;
+    true
 }
