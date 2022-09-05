@@ -2,7 +2,7 @@ use rsip::headers::{Allow, CallId, UntypedHeader, UserAgent};
 use rsip::{headers::auth, Header, SipMessage};
 use uuid::Uuid;
 
-use crate::composer::communication::{Auth, Trying, Start};
+use crate::composer::communication::{Auth, Start, Trying};
 use crate::composer::header_extension::PartialHeaderClone;
 use crate::config::JSONConfiguration;
 use crate::helper::auth::calculate_md5;
@@ -103,8 +103,8 @@ impl Start for Register {
                 display_name: Some(format!("{}", &self.username.to_string(),)),
                 uri: rsip::Uri {
                     host_with_port: (rsip::Domain::from(format!(
-                        "{}:{}",
-                        &self.ip, &self.sip_port
+                        "sip:{}@{}:{}",
+                        &self.username, &self.ip, &self.sip_port
                     )))
                     .into(),
                     ..Default::default()
@@ -146,7 +146,7 @@ impl Start for Register {
 impl Trying for Register {
     fn attempt(&self) -> SipMessage {
         let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
-        
+
         headers.push(
             rsip::typed::Authorization {
                 scheme: auth::Scheme::Digest,
