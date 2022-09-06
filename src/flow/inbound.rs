@@ -1,9 +1,6 @@
 use crate::{
-    commands::register::Register,
-    composer::{
-        communication::{Auth, Start, Trying},
-        messages::{ok, trying},
-    },
+    commands::{ok::ok, register::Register, trying::trying},
+    composer::communication::{Auth, Start, Trying},
     config::JSONConfiguration,
     log,
     sockets::{send, SocketV4},
