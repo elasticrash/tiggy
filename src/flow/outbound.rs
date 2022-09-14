@@ -1,9 +1,15 @@
 use crate::{
-    commands::{invite::Invite, ok::ok},
-    composer::communication::{Auth, Call, Trying},
+    commands::{ack::Ack, invite::Invite, ok::ok},
+    composer::communication::{Auth, Call, Start, Trying},
     config::JSONConfiguration,
     log,
-    sockets::{send, SocketV4},
+    state::transactions::{Reset, Transaction, TransactionType},
+    transmissions::sockets::{send, SocketV4},
+};
+use nom::{
+    bytes::complete::{tag, take_until},
+    error::Error,
+    sequence::tuple,
 };
 use rsip::{
     header_opt,
@@ -19,6 +25,7 @@ use std::{
     net::{IpAddr, UdpSocket},
     sync::{Arc, Mutex},
 };
+use uuid::Uuid;
 
 use super::state::OutboundInit;
 
@@ -33,11 +40,19 @@ pub fn outbound_configure(conf: &JSONConfiguration, ip: &IpAddr) -> RefCell<Outb
         cld: Some(conf.username.clone()),
         md5: None,
         nonce: None,
+        call_id: Uuid::new_v4().to_string(),
+        tag_local: Uuid::new_v4().to_string(),
+        tag_remote: None,
     };
 
     RefCell::new(OutboundInit {
         inv: invite.clone(),
         msg: invite.init("".to_string()).to_string(),
+        transaction: Transaction {
+            tr_type: TransactionType::Invite,
+            local: false,
+            remote: false,
+        },
     })
 }
 
@@ -49,7 +64,8 @@ pub fn outbound_start(
     destination: String,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
-    let state_ref = state.borrow();
+    let mut state_ref = state.borrow_mut();
+    state_ref.transaction.local = true;
     send(
         &SocketV4 {
             ip: conf.clone().sip_server,
@@ -67,6 +83,7 @@ pub fn outbound_request_flow(
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     ip: &IpAddr,
+    _state: &RefCell<OutboundInit>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) -> Method {
@@ -136,7 +153,7 @@ pub fn outbound_response_flow(
     response: &Response,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
-    _ip: &IpAddr,
+    ip: &IpAddr,
     state: &RefCell<OutboundInit>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
@@ -162,6 +179,7 @@ pub fn outbound_response_flow(
             state_ref.inv.nonce = Some(auth.nonce);
             state_ref.inv.set_auth(conf);
             state_ref.inv.msg = Some(msg);
+            state_ref.transaction.local = true;
 
             send(
                 &SocketV4 {
@@ -176,26 +194,47 @@ pub fn outbound_response_flow(
         }
         StatusCode::Ringing => {}
         StatusCode::OK => {
-            // let ack: Ack = Ack {
-            //     extension: conf.extension.to_string(),
-            //     username: conf.username.clone(),
-            //     sip_server: conf.sip_server.to_string(),
-            //     sip_port: conf.sip_port.to_string(),
-            //     ip: ip.to_string(),
-            //     msg: None,
-            //     cld: state_ref.inv.cld.clone(),
-            // };
+            if state_ref.transaction.local {
+                state_ref.transaction.remote = true;
+            }
 
-            // send(
-            //     &SocketV4 {
-            //         ip: conf.clone().sip_server,
-            //         port: conf.clone().sip_port,
-            //     },
-            //     ack.ask().to_string(),
-            //     socket,
-            //     silent,
-            //     logs,
-            // );
+            if state_ref.transaction.local && state_ref.transaction.remote {
+                let hstr = response.clone().to_header().unwrap().to_string();
+                let (rem, (_, _, _, _)): (&str, (&str, &str, &str, &str)) =
+                    tuple((
+                        take_until::<&str, &str, Error<&str>>(";"),
+                        tag(";"),
+                        take_until("="),
+                        tag("="),
+                    ))(&*hstr)
+                    .unwrap();
+
+                let ack: Ack = Ack {
+                    extension: conf.extension.to_string(),
+                    username: conf.username.clone(),
+                    sip_server: conf.sip_server.to_string(),
+                    sip_port: conf.sip_port.to_string(),
+                    ip: ip.to_string(),
+                    msg: None,
+                    cld: state_ref.inv.cld.clone(),
+                    call_id: state_ref.inv.call_id.clone(),
+                    tag_local: state_ref.inv.tag_local.clone(),
+                    tag_remote: rem.to_string(),
+                };
+
+                send(
+                    &SocketV4 {
+                        ip: conf.clone().sip_server,
+                        port: conf.clone().sip_port,
+                    },
+                    ack.set().to_string(),
+                    socket,
+                    silent,
+                    logs,
+                );
+            }
+
+            state_ref.transaction.reset();
         }
         _ => todo!(),
     }

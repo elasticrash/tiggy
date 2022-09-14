@@ -3,17 +3,15 @@ use rsip::headers::{Allow, UntypedHeader, UserAgent};
 use rsip::Request;
 use rsip::{message::HeadersExt, Header, SipMessage};
 
+use super::helper::get_base_uri;
+
 pub fn trying(conf: &JSONConfiguration, ip: &String, req: &Request) -> rsip::SipMessage {
     let mut headers: rsip::Headers = Default::default();
-    let base_uri = rsip::Uri {
-        auth: None,
-        host_with_port: rsip::Domain::from(format!(
-            "sip:{}@{}:{}",
-            &conf.extension, &conf.sip_server, &conf.sip_port
-        ))
-        .into(),
-        ..Default::default()
-    };
+    let base_uri = get_base_uri(
+        &conf.extension,
+        &conf.sip_server,
+        &conf.sip_port.to_string(),
+    );
 
     headers.push(
         rsip::typed::Via {

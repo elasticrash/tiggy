@@ -3,7 +3,7 @@ use crate::{
     composer::communication::{Auth, Start, Trying},
     config::JSONConfiguration,
     log,
-    sockets::{send, SocketV4},
+    transmissions::sockets::{send, SocketV4},
 };
 use rsip::{
     header_opt,
@@ -13,6 +13,7 @@ use rsip::{
     typed::{Via, WwwAuthenticate},
     Header, Method, Request, Response, SipMessage, StatusCode,
 };
+use uuid::Uuid;
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -36,6 +37,10 @@ pub fn inbound_start<'a>(conf: &'a JSONConfiguration, ip: &'a IpAddr) -> RefCell
         username: conf.username.clone(),
         nonce: None,
         msg: None,
+        cld: None,
+        call_id: Uuid::new_v4().to_string(),
+        tag_local: Uuid::new_v4().to_string(),
+        tag_remote: None,
     };
 
     RefCell::new(InboundInit {

@@ -15,3 +15,23 @@ pub fn calculate_md5(
     let md5 = format!("{:x}", md5::compute(cmd5));
     md5
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::helper::auth::calculate_md5;
+
+    #[test]
+    fn md5_from_config() {
+        let md5 = calculate_md5(
+            &"1123341004".to_string(),
+            &"123".to_string(),
+            &"sip.server.com".to_string(),
+            &"1004".to_string(),
+            &"sip.server.com".to_string(),
+            &"5060".to_string(),
+            &"YxXVVmMV1CqOO5KBA9b9D4Yi7JNy513z".to_string(),
+            &"REGISTER".to_string(),
+        );
+        assert_eq!(md5, "dab6dae59c1e00a003c4d28748e66894");
+    }
+}

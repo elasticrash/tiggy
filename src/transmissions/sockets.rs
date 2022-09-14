@@ -1,4 +1,4 @@
-use crate::log::{log_in, log_out, print_msg};
+use crate::log::{print_msg};
 use rsip::SipMessage;
 use std::{
     collections::VecDeque,
@@ -19,7 +19,7 @@ pub fn send(
     s: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
-    log_out(logs);
+    print_msg("===>".to_string(), s, logs);
     print_msg(msg.clone(), s, logs);
 
     socket
@@ -33,11 +33,10 @@ pub fn receive(
     s: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) -> Result<SipMessage, rsip::Error> {
-    log_in(logs);
-
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];
     let r_message_a = String::from_utf8_lossy(slice);
+    print_msg("<===".to_string(), s, logs);
     print_msg(r_message_a.to_string(), s, logs);
 
     SipMessage::try_from(r_message_a.to_string())

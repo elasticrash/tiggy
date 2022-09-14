@@ -1,5 +1,4 @@
 extern crate md5;
-extern crate phf;
 extern crate rand;
 mod commands;
 mod composer;
@@ -8,7 +7,8 @@ mod flow;
 mod helper;
 mod log;
 mod menu;
-mod sockets;
+mod state;
+mod transmissions;
 mod ui;
 
 use std::collections::VecDeque;
@@ -31,6 +31,7 @@ use flow::outbound::{
 use flow::Flow;
 use log::print_msg;
 use rsip::{Method, Response};
+use state::transactions::Reset;
 use std::net::UdpSocket;
 use tui::backend::{Backend, CrosstermBackend};
 use tui::widgets::{Block, Borders};
@@ -38,7 +39,7 @@ use tui::Terminal;
 use ui::app::{ui, App, InputMode};
 
 use crate::flow::inbound::{inbound_request_flow, inbound_response_flow, inbound_start};
-use crate::sockets::{peek, receive, send, SocketV4};
+use crate::transmissions::sockets::{peek, receive, send, SocketV4};
 
 use crate::menu::builder::build_menu;
 
@@ -59,17 +60,14 @@ fn main() -> Result<(), io::Error> {
     let thread_logs = Arc::clone(&logs);
 
     let conf = config::read("./config.json").unwrap();
-    let is_there_an_ipv4 = get_if_addrs::get_if_addrs()
-        .unwrap()
-        .into_iter()
-        .find(|ip| {
-            print_msg(
-                format!("available interface:, {}", ip.addr.ip()),
-                false,
-                &logs,
-            );
-            ip.ip().is_ipv4()
-        });
+    let is_there_an_ipv4 = if_addrs::get_if_addrs().unwrap().into_iter().find(|ip| {
+        print_msg(
+            format!("available interface:, {}", ip.addr.ip()),
+            false,
+            &logs,
+        );
+        ip.ip().is_ipv4()
+    });
 
     let ip = match is_there_an_ipv4 {
         Some(ipv4) => ipv4,
@@ -133,9 +131,9 @@ fn main() -> Result<(), io::Error> {
                     );
                 }
 
-                let packet_size = peek(&mut socket, &mut buffer);
+                let packets_queued = peek(&mut socket, &mut buffer);
 
-                if packet_size > 0 {
+                if packets_queued > 0 {
                     let msg = skip_fail!(receive(&mut socket, &mut buffer, silent, &thread_logs));
 
                     match flow {
@@ -180,6 +178,7 @@ fn main() -> Result<(), io::Error> {
                                     &mut socket,
                                     &conf,
                                     &ip,
+                                    &shared_out,
                                     silent,
                                     &thread_logs,
                                 );
@@ -229,6 +228,7 @@ fn main() -> Result<(), io::Error> {
                                     shared.inv.cld = Some(argument.clone());
                                     shared.msg =
                                         shared.inv.clone().init(argument.clone()).to_string();
+                                    shared.transaction.reset();
                                 }
                                 outbound_start(
                                     &mut socket,

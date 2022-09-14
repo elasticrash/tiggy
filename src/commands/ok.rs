@@ -8,6 +8,8 @@ use rsip::{Method, Param};
 use std::fmt::Write;
 use uuid::Uuid;
 
+use super::helper::get_base_uri;
+
 pub fn ok(
     conf: &JSONConfiguration,
     ip: &String,
@@ -16,15 +18,11 @@ pub fn ok(
     sdp: bool,
 ) -> rsip::SipMessage {
     let mut headers: rsip::Headers = Default::default();
-    let base_uri = rsip::Uri {
-        auth: None,
-        host_with_port: rsip::Domain::from(format!(
-            "sip:{}@{}:{}",
-            &conf.extension, &conf.sip_server, &conf.sip_port
-        ))
-        .into(),
-        ..Default::default()
-    };
+    let base_uri = get_base_uri(
+        &conf.extension,
+        &conf.sip_server,
+        &conf.sip_port.to_string(),
+    );
 
     headers.push_many(req.headers.get_via_header_array());
     headers.push_many(req.headers.get_record_route_header_array());

@@ -7,6 +7,8 @@ use crate::composer::header_extension::PartialHeaderClone;
 use crate::config::JSONConfiguration;
 use crate::helper::auth::calculate_md5;
 
+use super::helper::{get_base_uri, get_from, get_to, get_via, get_contact};
+
 #[derive(Clone)]
 pub struct Register {
     pub username: String,
@@ -18,6 +20,10 @@ pub struct Register {
     pub md5: Option<String>,
     pub nonce: Option<String>,
     pub msg: Option<SipMessage>,
+    pub cld: Option<String>,
+    pub call_id: String,
+    pub tag_local: String,
+    pub tag_remote: Option<String>,
 }
 
 impl Auth for Register {
@@ -40,57 +46,24 @@ impl Start for Register {
     fn set(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
 
-        let base_uri = rsip::Uri {
-            auth: None,
-            host_with_port: rsip::Domain::from(format!(
-                "sip:{}@{}:{}",
-                &self.extension, &self.sip_server, &self.sip_port
-            ))
-            .into(),
-            ..Default::default()
-        };
+        let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
-        headers.push(
-            rsip::typed::Via {
-                version: rsip::Version::V2,
-                transport: rsip::Transport::Udp,
-                uri: rsip::Uri {
-                    host_with_port: (rsip::Domain::from(format!(
-                        "{}:{}",
-                        &self.ip, &self.sip_port
-                    )))
-                    .into(),
-                    ..Default::default()
-                },
-                params: vec![rsip::Param::Branch(rsip::param::Branch::new(
-                    "z9hG4bKnashds8",
-                ))],
-            }
-            .into(),
-        );
-        headers.push(
-            rsip::typed::From {
-                display_name: Some(self.username.to_string()),
-                uri: base_uri.clone(),
-                params: vec![rsip::Param::Tag(rsip::param::Tag::new(
-                    Uuid::new_v4().to_string(),
-                ))],
-            }
-            .into(),
-        );
+        headers.push(get_via(&self.ip, &self.sip_port));
+        headers.push(get_from(&self.username, &self.tag_local, base_uri.clone()));
+        headers.push(get_to(
+            &self.username,
+            &self.extension,
+            &self.sip_server,
+            &self.sip_port,
+        ));
+        headers.push(rsip::headers::CallId::from(self.call_id.as_str()).into());
+        headers.push(get_contact(
+            &self.username,
+            &self.username,
+            &self.ip,
+            &self.sip_port,
+        ));
         headers.push(rsip::headers::MaxForwards::from(70).into());
-        headers.push(
-            rsip::typed::To {
-                display_name: Some(self.username.to_string()),
-                uri: base_uri,
-                params: Default::default(),
-            }
-            .into(),
-        );
-        headers.push(Header::CallId(CallId::new(format!(
-            "{}-tiggy",
-            Uuid::new_v4()
-        ))));
         headers.push(
             rsip::typed::CSeq {
                 seq: 1,
@@ -98,27 +71,11 @@ impl Start for Register {
             }
             .into(),
         );
-
-        headers.push(
-            rsip::typed::Contact {
-                display_name: Some(self.username.to_string()),
-                uri: rsip::Uri {
-                    host_with_port: (rsip::Domain::from(format!(
-                        "sip:{}@{}:{}",
-                        &self.username, &self.ip, &self.sip_port
-                    )))
-                    .into(),
-                    ..Default::default()
-                },
-                params: Default::default(),
-            }
-            .into(),
-        );
-        headers.push(rsip::headers::ContentLength::default().into());
         headers.push(Header::Allow(Allow::new(
             "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
         )));
         headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
+        headers.push(rsip::headers::ContentLength::default().into());
 
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,

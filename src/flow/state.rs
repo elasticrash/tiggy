@@ -1,4 +1,6 @@
-use crate::{commands::invite::Invite, commands::register::Register};
+use crate::{
+    commands::invite::Invite, commands::register::Register, state::transactions::Transaction,
+};
 
 #[derive(Clone)]
 pub struct InboundInit {
@@ -10,4 +12,5 @@ pub struct InboundInit {
 pub struct OutboundInit {
     pub inv: Invite,
     pub msg: String,
+    pub transaction: Transaction,
 }

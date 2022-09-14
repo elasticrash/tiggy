@@ -1,12 +1,13 @@
 use crate::composer::header_extension::PartialHeaderClone;
 use rsip::headers::{UntypedHeader, UserAgent};
 use rsip::{headers::auth, Header, SipMessage};
-use uuid::Uuid;
 
 use crate::composer::communication::{Auth, Call, Trying};
 use crate::config::JSONConfiguration;
 use crate::helper::auth::calculate_md5;
 use std::fmt::Write;
+
+use super::helper::{get_base_uri, get_contact, get_from, get_to, get_via};
 
 #[derive(Clone)]
 pub struct Invite {
@@ -19,6 +20,9 @@ pub struct Invite {
     pub cld: Option<String>,
     pub md5: Option<String>,
     pub nonce: Option<String>,
+    pub call_id: String,
+    pub tag_local: String,
+    pub tag_remote: Option<String>,
 }
 
 impl Auth for Invite {
@@ -40,73 +44,23 @@ impl Auth for Invite {
 impl Call for Invite {
     fn init(&self, destination: String) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
-        let base_uri = rsip::Uri {
-            auth: None,
-            host_with_port: rsip::Domain::from(format!(
-                "sip:{}@{}:{}",
-                &self.extension, &self.sip_server, &self.sip_port
-            ))
-            .into(),
-            ..Default::default()
-        };
+        let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
-        headers.push(
-            rsip::typed::Via {
-                version: rsip::Version::V2,
-                transport: rsip::Transport::Udp,
-                uri: rsip::Uri {
-                    host_with_port: (rsip::Domain::from(format!(
-                        "{}:{}",
-                        &self.ip, &self.sip_port
-                    )))
-                    .into(),
-                    ..Default::default()
-                },
-                params: vec![rsip::Param::Branch(rsip::param::Branch::new(
-                    "z9hG4bKnashds8",
-                ))],
-            }
-            .into(),
-        );
-        headers.push(
-            rsip::typed::From {
-                display_name: Some(self.username.to_string()),
-                uri: base_uri.clone(),
-                params: vec![rsip::Param::Tag(rsip::param::Tag::new(
-                    Uuid::new_v4().to_string(),
-                ))],
-            }
-            .into(),
-        );
-        headers.push(
-            rsip::typed::To {
-                display_name: Some(self.cld.as_ref().unwrap().to_string()),
-                uri: rsip::Uri {
-                    auth: None,
-                    host_with_port: rsip::Domain::from(format!(
-                        "sip:{}@{}:{}",
-                        &self.cld.as_ref().unwrap().to_string(),
-                        &self.sip_server,
-                        &self.sip_port
-                    ))
-                    .into(),
-                    ..Default::default()
-                },
-                params: Default::default(),
-            }
-            .into(),
-        );
-
-        headers.push(rsip::headers::CallId::from(Uuid::new_v4().to_string()).into());
-
-        headers.push(
-            rsip::typed::Contact {
-                display_name: Some(self.username.to_string()),
-                uri: base_uri,
-                params: Default::default(),
-            }
-            .into(),
-        );
+        headers.push(get_via(&self.ip, &self.sip_port));
+        headers.push(get_from(&self.username, &self.tag_local, base_uri.clone()));
+        headers.push(get_to(
+            &self.cld.as_ref().unwrap(),
+            &self.cld.as_ref().unwrap(),
+            &self.sip_server,
+            &self.sip_port,
+        ));
+        headers.push(rsip::headers::CallId::from(self.call_id.as_str()).into());
+        headers.push(get_contact(
+            &self.username,
+            &self.extension,
+            &self.sip_server,
+            &self.sip_port,
+        ));
         headers.push(rsip::headers::MaxForwards::from(70).into());
         headers.push(
             rsip::typed::CSeq {
@@ -124,25 +78,6 @@ impl Call for Invite {
 
         headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
 
-        headers.push(
-            rsip::typed::Via {
-                version: rsip::Version::V2,
-                transport: rsip::Transport::Udp,
-                uri: rsip::Uri {
-                    host_with_port: (rsip::Domain::from(format!(
-                        "{}:{}",
-                        &self.ip, &self.sip_port
-                    )))
-                    .into(),
-                    ..Default::default()
-                },
-                params: vec![rsip::Param::Branch(rsip::param::Branch::new(
-                    "z9hG4bKnashds8",
-                ))],
-            }
-            .into(),
-        );
-
         let mut body = "v=0\r\n".to_string();
         let _ = write!(body, "o=tggVCE 226678890 391916715 IN IP4 {}\r\n", &self.ip);
         body.push_str("s=tggVCE Audio Call\r\n");
@@ -155,7 +90,6 @@ impl Call for Invite {
         body.push_str("a=fmtp:96 0-15\r\n");
 
         headers.push(rsip::headers::ContentType::from("application/sdp").into());
-
         headers.push(rsip::headers::ContentLength::from(body.len().to_string()).into());
 
         let response: SipMessage = rsip::Request {

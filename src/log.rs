@@ -12,26 +12,6 @@ use tui::{
     text::{Span, Spans},
 };
 
-pub fn log_out(logs: &Arc<Mutex<VecDeque<String>>>) {
-    let mut arr = logs.lock().unwrap();
-    arr.push_back(format!(
-        "<{:?}> [{}] - {:?}",
-        thread::current().id(),
-        line!(),
-        ">>>>>>>>>>>>>"
-    ));
-}
-
-pub fn log_in(logs: &Arc<Mutex<VecDeque<String>>>) {
-    let mut arr = logs.lock().unwrap();
-    arr.push_back(format!(
-        "<{:?}> [{}] - {:?}",
-        thread::current().id(),
-        line!(),
-        "<<<<<<<<<<<<<"
-    ));
-}
-
 pub fn slog(log: &str, logs: &Arc<Mutex<VecDeque<String>>>) {
     let mut arr = logs.lock().unwrap();
     arr.push_back(format!(
