@@ -1,16 +1,12 @@
 use crate::{
-    commands::{ack::Ack, invite::Invite, ok::ok},
+    commands::{ack::Ack, invite::Invite, ok::ok, helper::get_remote_tag},
     composer::communication::{Auth, Call, Start, Trying},
     config::JSONConfiguration,
     log,
     state::transactions::{Reset, Transaction, TransactionType},
     transmissions::sockets::{send, SocketV4},
 };
-use nom::{
-    bytes::complete::{tag, take_until},
-    error::Error,
-    sequence::tuple,
-};
+
 use rsip::{
     header_opt,
     message::HasHeaders,
@@ -200,14 +196,7 @@ pub fn outbound_response_flow(
 
             if state_ref.transaction.local && state_ref.transaction.remote {
                 let hstr = response.clone().to_header().unwrap().to_string();
-                let (rem, (_, _, _, _)): (&str, (&str, &str, &str, &str)) =
-                    tuple((
-                        take_until::<&str, &str, Error<&str>>(";"),
-                        tag(";"),
-                        take_until("="),
-                        tag("="),
-                    ))(&*hstr)
-                    .unwrap();
+                let remote_tag = get_remote_tag(&hstr);
 
                 let ack: Ack = Ack {
                     extension: conf.extension.to_string(),
@@ -219,7 +208,7 @@ pub fn outbound_response_flow(
                     cld: state_ref.inv.cld.clone(),
                     call_id: state_ref.inv.call_id.clone(),
                     tag_local: state_ref.inv.tag_local.clone(),
-                    tag_remote: rem.to_string(),
+                    tag_remote: remote_tag.to_string(),
                 };
 
                 send(

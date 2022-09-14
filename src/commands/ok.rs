@@ -5,14 +5,12 @@ use rsip::param::Tag;
 use rsip::Request;
 use rsip::{message::HeadersExt, Header, SipMessage};
 use rsip::{Method, Param};
-use std::fmt::Write;
-use uuid::Uuid;
 
-use super::helper::get_base_uri;
+use super::helper::{get_base_uri, get_remote_tag, get_fake_sdp};
 
 pub fn ok(
     conf: &JSONConfiguration,
-    ip: &String,
+    ip: &str,
     req: &Request,
     method: Method,
     sdp: bool,
@@ -26,7 +24,6 @@ pub fn ok(
 
     headers.push_many(req.headers.get_via_header_array());
     headers.push_many(req.headers.get_record_route_header_array());
-    headers.push(req.via_header().unwrap().clone().into());
 
     if req.max_forwards_header().is_ok() {
         headers.push(req.max_forwards_header().unwrap().clone().into())
@@ -36,11 +33,14 @@ pub fn ok(
     let to = req.to_header().unwrap().typed().unwrap();
     let cseq = req.cseq_header().unwrap().typed().unwrap();
 
+    let hstr = req.clone().from_header().unwrap().to_string();
+    let remote_tag = get_remote_tag(&hstr);
+
     headers.push(
         rsip::typed::To {
             display_name: to.display_name.clone(),
             uri: to.uri,
-            params: vec![Param::Tag(Tag::new(Uuid::new_v4().to_string()))],
+            params: vec![Param::Tag(Tag::new(remote_tag))],
         }
         .into(),
     );
@@ -66,19 +66,10 @@ pub fn ok(
     headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
     headers.push(Header::ContentType(ContentType::new("application/sdp")));
 
-    let mut body = "v=0\r\n".to_string();
-    let _ = write!(body, "o=tggVCE 226678890 391916715 IN IP4 {}\r\n", ip);
-    body.push_str("s=tggVCE Audio Call\r\n");
-    let _ = write!(body, "c=IN IP4 {}\r\n", ip);
-    body.push_str("t=0 0\r\n");
-    body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
-    body.push_str("a=rtpmap:0 PCMU/8000\r\n");
-    body.push_str("a=rtpmap:8 PCMA/8000\r\n");
-    body.push_str("a=rtpmap:96 telephone-event/8000\r\n");
-    body.push_str("a=fmtp:96 0-15\r\n");
+    let fake_sdp_body = get_fake_sdp(ip);
 
     headers.push(Header::ContentLength(ContentLength::new(
-        body.len().to_string(),
+        fake_sdp_body.len().to_string(),
     )));
 
     let response: SipMessage = rsip::Response {
@@ -86,7 +77,7 @@ pub fn ok(
         version: rsip::Version::V2,
         headers,
         body: if sdp {
-            body.as_bytes().to_vec()
+            fake_sdp_body.as_bytes().to_vec()
         } else {
             Default::default()
         },

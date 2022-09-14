@@ -5,9 +5,8 @@ use rsip::{headers::auth, Header, SipMessage};
 use crate::composer::communication::{Auth, Call, Trying};
 use crate::config::JSONConfiguration;
 use crate::helper::auth::calculate_md5;
-use std::fmt::Write;
 
-use super::helper::{get_base_uri, get_contact, get_from, get_to, get_via};
+use super::helper::{get_base_uri, get_contact, get_fake_sdp, get_from, get_to, get_via};
 
 #[derive(Clone)]
 pub struct Invite {
@@ -47,10 +46,10 @@ impl Call for Invite {
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
         headers.push(get_via(&self.ip, &self.sip_port));
-        headers.push(get_from(&self.username, &self.tag_local, base_uri.clone()));
+        headers.push(get_from(&self.username, &self.tag_local, base_uri));
         headers.push(get_to(
-            &self.cld.as_ref().unwrap(),
-            &self.cld.as_ref().unwrap(),
+            self.cld.as_ref().unwrap(),
+            self.cld.as_ref().unwrap(),
             &self.sip_server,
             &self.sip_port,
         ));
@@ -78,19 +77,10 @@ impl Call for Invite {
 
         headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
 
-        let mut body = "v=0\r\n".to_string();
-        let _ = write!(body, "o=tggVCE 226678890 391916715 IN IP4 {}\r\n", &self.ip);
-        body.push_str("s=tggVCE Audio Call\r\n");
-        let _ = write!(body, "c=IN IP4 {}\r\n", &self.ip);
-        body.push_str("t=0 0\r\n");
-        body.push_str("m=audio 40024 RTP/AVP 0 8 96\r\n");
-        body.push_str("a=rtpmap:0 PCMU/8000\r\n");
-        body.push_str("a=rtpmap:8 PCMA/8000\r\n");
-        body.push_str("a=rtpmap:96 telephone-event/8000\r\n");
-        body.push_str("a=fmtp:96 0-15\r\n");
+        let fake_sdp_body = get_fake_sdp(&self.ip);
 
         headers.push(rsip::headers::ContentType::from("application/sdp").into());
-        headers.push(rsip::headers::ContentLength::from(body.len().to_string()).into());
+        headers.push(rsip::headers::ContentLength::from(fake_sdp_body.len().to_string()).into());
 
         let response: SipMessage = rsip::Request {
             method: rsip::Method::Invite,
@@ -105,7 +95,7 @@ impl Call for Invite {
             },
             version: rsip::Version::V2,
             headers,
-            body: body.as_bytes().to_vec(),
+            body: fake_sdp_body.as_bytes().to_vec(),
         }
         .into();
 

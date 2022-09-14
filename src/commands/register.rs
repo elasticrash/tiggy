@@ -1,6 +1,5 @@
-use rsip::headers::{Allow, CallId, UntypedHeader, UserAgent};
+use rsip::headers::{Allow, UntypedHeader, UserAgent};
 use rsip::{headers::auth, Header, SipMessage};
-use uuid::Uuid;
 
 use crate::composer::communication::{Auth, Start, Trying};
 use crate::composer::header_extension::PartialHeaderClone;
@@ -49,7 +48,7 @@ impl Start for Register {
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
         headers.push(get_via(&self.ip, &self.sip_port));
-        headers.push(get_from(&self.username, &self.tag_local, base_uri.clone()));
+        headers.push(get_from(&self.username, &self.tag_local, base_uri));
         headers.push(get_to(
             &self.username,
             &self.extension,
