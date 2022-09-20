@@ -1,4 +1,4 @@
-use crate::log::{print_msg};
+use crate::log::print_msg;
 use rsip::SipMessage;
 use std::{
     collections::VecDeque,

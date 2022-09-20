@@ -6,7 +6,7 @@ use rsip::Request;
 use rsip::{message::HeadersExt, Header, SipMessage};
 use rsip::{Method, Param};
 
-use super::helper::{get_base_uri, get_remote_tag, get_fake_sdp};
+use super::helper::{get_base_uri, get_fake_sdp, get_remote_tag};
 
 pub fn ok(
     conf: &JSONConfiguration,

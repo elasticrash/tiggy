@@ -1,8 +1,9 @@
 use crate::{
-    commands::{ok::ok, register::Register, trying::trying},
-    composer::communication::{Auth, Start, Trying},
+    commands::{ok::ok, trying::trying},
+    composer::communication::Auth,
     config::JSONConfiguration,
     log,
+    state::dialogs::{Dialogs, Direction},
     transmissions::sockets::{send, SocketV4},
 };
 use rsip::{
@@ -13,9 +14,7 @@ use rsip::{
     typed::{Via, WwwAuthenticate},
     Header, Method, Request, Response, SipMessage, StatusCode,
 };
-use uuid::Uuid;
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     convert::TryFrom,
     net::{IpAddr, UdpSocket},
@@ -23,31 +22,6 @@ use std::{
     thread,
     time::Duration,
 };
-
-use super::state::InboundInit;
-
-pub fn inbound_start<'a>(conf: &'a JSONConfiguration, ip: &'a IpAddr) -> RefCell<InboundInit> {
-    let register: Register = Register {
-        branch: "z9hG4bKnashds8".to_string(),
-        extension: conf.extension.to_string(),
-        ip: ip.to_string(),
-        md5: None,
-        sip_port: conf.sip_port.to_string(),
-        sip_server: conf.sip_server.to_string(),
-        username: conf.username.clone(),
-        nonce: None,
-        msg: None,
-        cld: None,
-        call_id: Uuid::new_v4().to_string(),
-        tag_local: Uuid::new_v4().to_string(),
-        tag_remote: None,
-    };
-
-    RefCell::new(InboundInit {
-        reg: register.clone(),
-        msg: register.set().to_string(),
-    })
-}
 
 pub fn inbound_request_flow(
     msg: &SipMessage,
@@ -153,12 +127,12 @@ pub fn inbound_response_flow(
     response: &Response,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
-    state: &RefCell<InboundInit>,
+    state: &Arc<Mutex<Dialogs>>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) -> StatusCode {
-    let mut state_ref = state.borrow_mut();
-    let msg: SipMessage = SipMessage::try_from(state_ref.msg.clone()).unwrap();
+    let mut locked_state = state.lock().unwrap();
+    let mut dialogs = locked_state.get_dialogs().unwrap();
 
     log::slog(
         format!("received inbound response, {}", response.status_code).as_str(),
@@ -174,20 +148,26 @@ pub fn inbound_response_flow(
             )
             .unwrap();
 
-            state_ref.reg.nonce = Some(auth.nonce);
-            state_ref.reg.set_auth(conf);
-            state_ref.reg.msg = Some(msg);
+            for dg in dialogs.iter_mut() {
+                if matches!(dg.diag_type, Direction::Inbound) {
+                    let mut tr = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = tr.last_mut().unwrap();
+                    transaction.object.nonce = Some(auth.nonce.clone());
+                    transaction.object.set_auth(conf, "REGISTER");
+                    transaction.object.msg = transaction.local.clone();
 
-            send(
-                &SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                },
-                state_ref.reg.attempt().to_string(),
-                socket,
-                silent,
-                logs,
-            );
+                    send(
+                        &SocketV4 {
+                            ip: conf.clone().sip_server,
+                            port: conf.clone().sip_port,
+                        },
+                        transaction.object.push_auth_to_register().to_string(),
+                        socket,
+                        silent,
+                        logs,
+                    );
+                }
+            }
         }
         StatusCode::Trying => {}
         StatusCode::OK => {}

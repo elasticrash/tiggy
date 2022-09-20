@@ -1,8 +1,14 @@
+use rsip::SipMessage;
+
+use super::options::SipOptions;
+
 #[derive(Clone)]
 pub struct Transaction {
     pub tr_type: TransactionType,
-    pub local: bool,
-    pub remote: bool,
+    pub local: Option<SipMessage>,
+    pub remote: Option<SipMessage>,
+    pub send: u16,
+    pub object: SipOptions,
 }
 
 pub trait Reset {
@@ -11,8 +17,8 @@ pub trait Reset {
 
 impl Reset for Transaction {
     fn reset(&mut self) {
-        self.local = false;
-        self.remote = false;
+        self.local = None;
+        self.remote = None;
     }
 }
 
@@ -20,5 +26,7 @@ impl Reset for Transaction {
 pub enum TransactionType {
     Typical,
     Invite,
-    Ack
+    Ack,
 }
+
+impl Transaction {}

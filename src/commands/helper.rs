@@ -1,23 +1,9 @@
-use nom::{sequence::tuple, bytes::complete::{take_until, tag}, error::Error};
-use rsip::SipMessage;
+use nom::{
+    bytes::complete::{tag, take_until},
+    error::Error,
+    sequence::tuple,
+};
 use std::fmt::Write;
-
-#[derive(Clone)]
-pub struct Register {
-    pub username: String,
-    pub extension: String,
-    pub sip_server: String,
-    pub sip_port: String,
-    pub branch: String,
-    pub ip: String,
-    pub md5: Option<String>,
-    pub nonce: Option<String>,
-    pub msg: Option<SipMessage>,
-    pub cld: Option<String>,
-    pub call_id: String,
-    pub tag_local: String,
-    pub tag_remote: Option<String>,
-}
 
 pub fn get_base_uri(number: &str, server: &str, port: &str) -> rsip::Uri {
     rsip::Uri {
@@ -56,13 +42,7 @@ pub fn get_to(username: &str, did: &str, server: &str, port: &str) -> rsip::Head
         display_name: Some(username.to_string()),
         uri: rsip::Uri {
             auth: None,
-            host_with_port: rsip::Domain::from(format!(
-                "sip:{}@{}:{}",
-                did,
-                server,
-                port
-            ))
-            .into(),
+            host_with_port: rsip::Domain::from(format!("sip:{}@{}:{}", did, server, port)).into(),
             ..Default::default()
         },
         params: Default::default(),

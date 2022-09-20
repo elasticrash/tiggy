@@ -4,13 +4,15 @@ mod commands;
 mod composer;
 mod config;
 mod flow;
-mod helper;
 mod log;
 mod menu;
+mod startup;
 mod state;
 mod transmissions;
 mod ui;
 
+use chrono::prelude::*;
+use startup::registration::register_ua;
 use std::collections::VecDeque;
 use std::io;
 use std::sync::mpsc::{self, Sender};
@@ -19,7 +21,6 @@ use std::thread::{self};
 use std::time::Instant;
 use std::{convert::TryFrom, time::Duration};
 
-use composer::communication::{Call, Start};
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
 use crossterm::execute;
 use crossterm::terminal::{
@@ -28,18 +29,18 @@ use crossterm::terminal::{
 use flow::outbound::{
     outbound_configure, outbound_request_flow, outbound_response_flow, outbound_start,
 };
-use flow::Flow;
 use log::print_msg;
 use rsip::{Method, Response};
-use state::transactions::Reset;
+use state::dialogs::{Dialog, Dialogs, Direction, Transactions};
 use std::net::UdpSocket;
 use tui::backend::{Backend, CrosstermBackend};
 use tui::widgets::{Block, Borders};
 use tui::Terminal;
 use ui::app::{ui, App, InputMode};
+use uuid::Uuid;
 
-use crate::flow::inbound::{inbound_request_flow, inbound_response_flow, inbound_start};
-use crate::transmissions::sockets::{peek, receive, send, SocketV4};
+use crate::flow::inbound::{inbound_request_flow, inbound_response_flow};
+use crate::transmissions::sockets::{peek, receive};
 
 use crate::menu::builder::build_menu;
 
@@ -102,7 +103,7 @@ fn main() -> Result<(), io::Error> {
     let _handler = builder
         .spawn(move || {
             let mut silent = false;
-            let mut flow = Flow::Inbound;
+            let mut flow = Direction::Inbound;
 
             let mut buffer = [0_u8; 65535];
 
@@ -114,30 +115,34 @@ fn main() -> Result<(), io::Error> {
                 .expect("connect function failed");
 
             let mut count: i32 = 0;
-            let shared_in = inbound_start(&conf, &ip);
-            let shared_out = outbound_configure(&conf, &ip);
+
+            let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new()));
+
+            dialog_state
+                .lock()
+                .unwrap()
+                .state
+                .lock()
+                .unwrap()
+                .push(Dialog {
+                    call_id: Uuid::new_v4().to_string(),
+                    diag_type: state::dialogs::Direction::Outbound,
+                    local_tag: Uuid::new_v4().to_string(),
+                    remote_tag: None,
+                    transactions: Transactions::new(),
+                    time: Local::now(),
+                });
+
+            register_ua(&dialog_state, &conf, &ip, &mut socket, silent, &thread_logs);
 
             'thread: loop {
-                if count == 0 {
-                    send(
-                        &SocketV4 {
-                            ip: conf.clone().sip_server,
-                            port: conf.clone().sip_port,
-                        },
-                        shared_in.borrow().reg.set().to_string(),
-                        &mut socket,
-                        silent,
-                        &thread_logs,
-                    );
-                }
-
                 let packets_queued = peek(&mut socket, &mut buffer);
 
                 if packets_queued > 0 {
                     let msg = skip_fail!(receive(&mut socket, &mut buffer, silent, &thread_logs));
 
                     match flow {
-                        Flow::Inbound => {
+                        Direction::Inbound => {
                             if msg.is_response() {
                                 let response = Response::try_from(msg.clone()).unwrap();
 
@@ -145,7 +150,7 @@ fn main() -> Result<(), io::Error> {
                                     &response,
                                     &mut socket,
                                     &conf,
-                                    &shared_in,
+                                    &dialog_state,
                                     silent,
                                     &thread_logs,
                                 );
@@ -160,7 +165,7 @@ fn main() -> Result<(), io::Error> {
                                 );
                             }
                         }
-                        Flow::Outbound => {
+                        Direction::Outbound => {
                             if msg.is_response() {
                                 let response = Response::try_from(msg.clone()).unwrap();
                                 outbound_response_flow(
@@ -168,7 +173,7 @@ fn main() -> Result<(), io::Error> {
                                     &mut socket,
                                     &conf,
                                     &ip,
-                                    &shared_out,
+                                    &dialog_state,
                                     silent,
                                     &thread_logs,
                                 );
@@ -178,18 +183,17 @@ fn main() -> Result<(), io::Error> {
                                     &mut socket,
                                     &conf,
                                     &ip,
-                                    &shared_out,
+                                    &dialog_state,
                                     silent,
                                     &thread_logs,
                                 );
                                 if inb_msg == Method::Bye {
-                                    flow = Flow::Inbound;
+                                    flow = Direction::Inbound;
                                 }
                             }
                         }
                     }
                 }
-                count += 1;
 
                 let action_menu = Arc::new(build_menu());
 
@@ -222,20 +226,29 @@ fn main() -> Result<(), io::Error> {
                                 silent = !silent;
                             }
                             menu::builder::MenuType::Dial => {
-                                flow = Flow::Outbound;
+                                flow = Direction::Outbound;
                                 {
-                                    let mut shared = shared_out.borrow_mut();
-                                    shared.inv.cld = Some(argument.clone());
-                                    shared.msg =
-                                        shared.inv.clone().init(argument.clone()).to_string();
-                                    shared.transaction.reset();
+                                    let mut locked_state = dialog_state.lock().unwrap();
+                                    let mut dialogs = locked_state.get_dialogs().unwrap();
+
+                                    for dg in dialogs.iter_mut() {
+                                        if matches!(dg.diag_type, Direction::Outbound) {
+                                            let mut tr =
+                                                dg.transactions.get_transactions().unwrap();
+                                            let mut transaction = tr.last_mut().unwrap();
+                                            transaction.object.update_cld(argument.clone());
+
+                                            transaction.object.msg = Some(
+                                                transaction.object.clone().set_initial_invite(),
+                                            );
+                                        }
+                                    }
                                 }
                                 outbound_start(
                                     &mut socket,
                                     &conf,
-                                    &shared_out,
+                                    &dialog_state,
                                     silent,
-                                    argument.clone(),
                                     &thread_logs,
                                 );
                             }

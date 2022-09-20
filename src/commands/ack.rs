@@ -1,26 +1,12 @@
 use rsip::headers::{Allow, UntypedHeader, UserAgent};
 use rsip::{Header, SipMessage};
 
-use crate::composer::communication::Start;
+use crate::state::options::SipOptions;
 
 use super::helper::get_base_uri;
 
-#[derive(Clone)]
-pub struct Ack {
-    pub extension: String,
-    pub username: String,
-    pub sip_server: String,
-    pub sip_port: String,
-    pub ip: String,
-    pub msg: Option<SipMessage>,
-    pub cld: Option<String>,
-    pub call_id: String,
-    pub tag_local: String,
-    pub tag_remote: String,
-}
-
-impl Start for Ack {
-    fn set(&self) -> SipMessage {
+impl SipOptions {
+    pub fn create_ack(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
@@ -46,7 +32,9 @@ impl Start for Ack {
             rsip::typed::From {
                 display_name: Some(self.username.to_string()),
                 uri: base_uri.clone(),
-                params: vec![rsip::Param::Tag(rsip::param::Tag::new(&self.tag_remote))],
+                params: vec![rsip::Param::Tag(rsip::param::Tag::new(
+                    self.tag_remote.as_ref().unwrap(),
+                ))],
             }
             .into(),
         );

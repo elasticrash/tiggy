@@ -1,47 +1,12 @@
 use crate::composer::header_extension::PartialHeaderClone;
+use crate::state::options::SipOptions;
 use rsip::headers::{UntypedHeader, UserAgent};
 use rsip::{headers::auth, Header, SipMessage};
 
-use crate::composer::communication::{Auth, Call, Trying};
-use crate::config::JSONConfiguration;
-use crate::helper::auth::calculate_md5;
-
 use super::helper::{get_base_uri, get_contact, get_fake_sdp, get_from, get_to, get_via};
 
-#[derive(Clone)]
-pub struct Invite {
-    pub extension: String,
-    pub username: String,
-    pub sip_server: String,
-    pub sip_port: String,
-    pub ip: String,
-    pub msg: Option<SipMessage>,
-    pub cld: Option<String>,
-    pub md5: Option<String>,
-    pub nonce: Option<String>,
-    pub call_id: String,
-    pub tag_local: String,
-    pub tag_remote: Option<String>,
-}
-
-impl Auth for Invite {
-    fn set_auth(&mut self, conf: &JSONConfiguration) {
-        let md5 = calculate_md5(
-            &conf.username,
-            &conf.password,
-            &self.sip_server,
-            &self.extension,
-            &self.sip_server,
-            &self.sip_port,
-            self.nonce.as_ref().unwrap(),
-            &String::from("INVITE"),
-        );
-        self.md5 = Some(md5);
-    }
-}
-
-impl Call for Invite {
-    fn init(&self, destination: String) -> SipMessage {
+impl SipOptions {
+    pub fn set_initial_invite(&self) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
@@ -88,7 +53,9 @@ impl Call for Invite {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
                     "{}@{}:{}",
-                    destination, &self.sip_server, &self.sip_port
+                    &self.cld.as_ref().unwrap(),
+                    &self.sip_server,
+                    &self.sip_port
                 ))
                 .into(),
                 ..Default::default()
@@ -103,8 +70,8 @@ impl Call for Invite {
     }
 }
 
-impl Trying for Invite {
-    fn attempt(&self) -> SipMessage {
+impl SipOptions {
+    pub fn push_auth_to_invite(&self) -> SipMessage {
         let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
 
         headers.push(rsip::headers::ContentType::from("application/sdp").into());

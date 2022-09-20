@@ -1,12 +1,17 @@
 use crate::{
-    commands::{ack::Ack, invite::Invite, ok::ok, helper::get_remote_tag},
-    composer::communication::{Auth, Call, Start, Trying},
+    commands::{helper::get_remote_tag, ok::ok},
+    composer::communication::Auth,
     config::JSONConfiguration,
     log,
-    state::transactions::{Reset, Transaction, TransactionType},
+    state::{
+        dialogs::{Dialog, Dialogs, Direction, Transactions},
+        options::SipOptions,
+        transactions::{Transaction, TransactionType},
+    },
     transmissions::sockets::{send, SocketV4},
 };
 
+use chrono::prelude::*;
 use rsip::{
     header_opt,
     message::HasHeaders,
@@ -15,7 +20,6 @@ use rsip::{
     Header, Method, Request, Response, SipMessage, StatusCode,
 };
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     convert::TryFrom,
     net::{IpAddr, UdpSocket},
@@ -23,17 +27,21 @@ use std::{
 };
 use uuid::Uuid;
 
-use super::state::OutboundInit;
-
-pub fn outbound_configure(conf: &JSONConfiguration, ip: &IpAddr) -> RefCell<OutboundInit> {
-    let invite: Invite = Invite {
+pub fn outbound_configure(
+    conf: &JSONConfiguration,
+    ip: &IpAddr,
+    destination: &str,
+    state: &Arc<Mutex<Dialogs>>,
+) {
+    let invite = SipOptions {
+        branch: "z9hG4bKnashds8".to_string(),
         extension: conf.extension.to_string(),
         username: conf.username.clone(),
         sip_server: conf.sip_server.to_string(),
         sip_port: conf.sip_port.to_string(),
         ip: ip.to_string(),
         msg: None,
-        cld: Some(conf.username.clone()),
+        cld: Some(destination.to_string()),
         md5: None,
         nonce: None,
         call_id: Uuid::new_v4().to_string(),
@@ -41,37 +49,61 @@ pub fn outbound_configure(conf: &JSONConfiguration, ip: &IpAddr) -> RefCell<Outb
         tag_remote: None,
     };
 
-    RefCell::new(OutboundInit {
-        inv: invite.clone(),
-        msg: invite.init("".to_string()).to_string(),
-        transaction: Transaction {
-            tr_type: TransactionType::Invite,
-            local: false,
-            remote: false,
-        },
-    })
+    let mut locked_state = state.lock().unwrap();
+
+    locked_state.state.lock().unwrap().push(Dialog {
+        call_id: Uuid::new_v4().to_string(),
+        diag_type: Direction::Outbound,
+        local_tag: Uuid::new_v4().to_string(),
+        remote_tag: None,
+        transactions: Transactions::new(),
+        time: Local::now(),
+    });
+
+    let mut dialogs = locked_state.get_dialogs().unwrap();
+
+    for dg in dialogs.iter_mut() {
+        if matches!(dg.diag_type, Direction::Outbound) {
+            let mut transactions = dg.transactions.get_transactions().unwrap();
+            transactions.push(Transaction {
+                object: invite.clone(),
+                local: Some(invite.set_initial_invite()),
+                remote: None,
+                send: 0,
+                tr_type: TransactionType::Typical,
+            })
+        }
+    }
 }
 
 pub fn outbound_start(
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
-    state: &RefCell<OutboundInit>,
+    state: &Arc<Mutex<Dialogs>>,
     silent: bool,
-    destination: String,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
-    let mut state_ref = state.borrow_mut();
-    state_ref.transaction.local = true;
-    send(
-        &SocketV4 {
-            ip: conf.clone().sip_server,
-            port: conf.clone().sip_port,
-        },
-        state_ref.inv.init(destination).to_string(),
-        socket,
-        silent,
-        logs,
-    );
+    let mut locked_state = state.lock().unwrap();
+    let mut dialogs = locked_state.get_dialogs().unwrap();
+
+    for dg in dialogs.iter_mut() {
+        if matches!(dg.diag_type, Direction::Outbound) {
+            let mut tr = dg.transactions.get_transactions().unwrap();
+            let mut transaction = tr.last_mut().unwrap();
+            transaction.local = transaction.object.set_initial_invite().into();
+
+            send(
+                &SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                },
+                transaction.local.clone().unwrap().to_string(),
+                socket,
+                silent,
+                logs,
+            );
+        }
+    }
 }
 
 pub fn outbound_request_flow(
@@ -79,7 +111,7 @@ pub fn outbound_request_flow(
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     ip: &IpAddr,
-    _state: &RefCell<OutboundInit>,
+    _state: &Arc<Mutex<Dialogs>>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) -> Method {
@@ -150,12 +182,12 @@ pub fn outbound_response_flow(
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     ip: &IpAddr,
-    state: &RefCell<OutboundInit>,
+    state: &Arc<Mutex<Dialogs>>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) -> StatusCode {
-    let mut state_ref = state.borrow_mut();
-    let msg: SipMessage = SipMessage::try_from(state_ref.msg.clone()).unwrap();
+    let mut locked_state = state.lock().unwrap();
+    let mut dialogs = locked_state.get_dialogs().unwrap();
 
     log::slog(
         format!("received outbound response, {}", response.status_code).as_str(),
@@ -171,59 +203,76 @@ pub fn outbound_response_flow(
                     .clone(),
             )
             .unwrap();
+            for dg in dialogs.iter_mut() {
+                if matches!(dg.diag_type, Direction::Outbound) {
+                    let mut tr = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = tr.last_mut().unwrap();
+                    transaction.object.nonce = Some(auth.nonce.clone());
+                    transaction.object.set_auth(conf, "INVITE");
+                    transaction.object.msg = Some(transaction.local.clone().unwrap());
+                    transaction.send = 1;
 
-            state_ref.inv.nonce = Some(auth.nonce);
-            state_ref.inv.set_auth(conf);
-            state_ref.inv.msg = Some(msg);
-            state_ref.transaction.local = true;
-
-            send(
-                &SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                },
-                state_ref.inv.attempt().to_string(),
-                socket,
-                silent,
-                logs,
-            );
+                    send(
+                        &SocketV4 {
+                            ip: conf.clone().sip_server,
+                            port: conf.clone().sip_port,
+                        },
+                        transaction.object.push_auth_to_invite().to_string(),
+                        socket,
+                        silent,
+                        logs,
+                    );
+                }
+            }
         }
-        StatusCode::Ringing => {}
+        StatusCode::Ringing => {
+            for dg in dialogs.iter_mut() {
+                if matches!(dg.diag_type, Direction::Outbound) {
+                    let mut tr = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = tr.last_mut().unwrap();
+                    transaction.remote = Some(SipMessage::Response(response.clone()));
+                }
+            }
+        }
         StatusCode::OK => {
-            if state_ref.transaction.local {
-                state_ref.transaction.remote = true;
+            for dg in dialogs.iter_mut() {
+                if matches!(dg.diag_type, Direction::Outbound) {
+                    let mut tr = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = tr.last_mut().unwrap();
+                    if transaction.local.is_some() && transaction.remote.is_some() {
+                        let hstr = response.clone().to_header().unwrap().to_string();
+                        let remote_tag = get_remote_tag(&hstr);
+
+                        let ack = SipOptions {
+                            branch: "z9hG4bKnashds8".to_string(),
+                            extension: conf.extension.to_string(),
+                            username: conf.username.clone(),
+                            sip_server: conf.sip_server.to_string(),
+                            sip_port: conf.sip_port.to_string(),
+                            ip: ip.to_string(),
+                            msg: None,
+                            cld: transaction.object.cld.clone(),
+                            call_id: transaction.object.call_id.clone(),
+                            tag_local: transaction.object.tag_local.clone(),
+                            tag_remote: Some(remote_tag.to_string()),
+                            md5: None,
+                            nonce: None,
+                        };
+
+                        transaction.send += 1;
+                        send(
+                            &SocketV4 {
+                                ip: conf.clone().sip_server,
+                                port: conf.clone().sip_port,
+                            },
+                            ack.create_ack().to_string(),
+                            socket,
+                            silent,
+                            logs,
+                        );
+                    }
+                }
             }
-
-            if state_ref.transaction.local && state_ref.transaction.remote {
-                let hstr = response.clone().to_header().unwrap().to_string();
-                let remote_tag = get_remote_tag(&hstr);
-
-                let ack: Ack = Ack {
-                    extension: conf.extension.to_string(),
-                    username: conf.username.clone(),
-                    sip_server: conf.sip_server.to_string(),
-                    sip_port: conf.sip_port.to_string(),
-                    ip: ip.to_string(),
-                    msg: None,
-                    cld: state_ref.inv.cld.clone(),
-                    call_id: state_ref.inv.call_id.clone(),
-                    tag_local: state_ref.inv.tag_local.clone(),
-                    tag_remote: remote_tag.to_string(),
-                };
-
-                send(
-                    &SocketV4 {
-                        ip: conf.clone().sip_server,
-                        port: conf.clone().sip_port,
-                    },
-                    ack.set().to_string(),
-                    socket,
-                    silent,
-                    logs,
-                );
-            }
-
-            state_ref.transaction.reset();
         }
         _ => todo!(),
     }
