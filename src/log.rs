@@ -56,8 +56,11 @@ pub fn print_msg(msg: String, s: bool, logs: &Arc<Mutex<VecDeque<String>>>) {
             print[0]
         ));
     }
-
     // logs to file
+    flog(&print);
+}
+
+pub fn flog(print: &Vec<&str>) {
     if !Path::new("log.txt").exists() {
         File::create("log.txt").unwrap();
     }

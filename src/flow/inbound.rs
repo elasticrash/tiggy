@@ -12,7 +12,7 @@ use rsip::{
     message::HasHeaders,
     message::HeadersExt,
     typed::{Via, WwwAuthenticate},
-    Header, Method, Request, Response, SipMessage, StatusCode,
+    Header, Request, Response, StatusCode,
 };
 use std::{
     collections::VecDeque,
@@ -23,15 +23,14 @@ use std::{
     time::Duration,
 };
 
-pub fn inbound_request_flow(
-    msg: &SipMessage,
+pub fn process_request_inbound(
+    request: &Request,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     ip: &IpAddr,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
-) -> Method {
-    let request = Request::try_from(msg.clone()).unwrap();
+) {
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
     log::slog(
@@ -51,7 +50,7 @@ pub fn inbound_request_flow(
                 ok(
                     conf,
                     &ip.clone().to_string(),
-                    &request,
+                    request,
                     rsip::Method::Bye,
                     false,
                 )
@@ -69,7 +68,7 @@ pub fn inbound_request_flow(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                trying(conf, &ip.clone().to_string(), &request).to_string(),
+                trying(conf, &ip.clone().to_string(), request).to_string(),
                 socket,
                 silent,
                 logs,
@@ -83,7 +82,7 @@ pub fn inbound_request_flow(
                 ok(
                     conf,
                     &ip.clone().to_string(),
-                    &request,
+                    request,
                     rsip::Method::Invite,
                     true,
                 )
@@ -104,7 +103,7 @@ pub fn inbound_request_flow(
                 ok(
                     conf,
                     &ip.clone().to_string(),
-                    &request,
+                    request,
                     rsip::Method::Options,
                     false,
                 )
@@ -120,17 +119,16 @@ pub fn inbound_request_flow(
         rsip::Method::Subscribe => {}
         rsip::Method::Update => {}
     }
-    request.method
 }
 
-pub fn inbound_response_flow(
+pub fn process_response_inbound(
     response: &Response,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
-) -> StatusCode {
+) {
     let mut locked_state = state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
 
@@ -173,5 +171,4 @@ pub fn inbound_response_flow(
         StatusCode::OK => {}
         _ => {}
     }
-    response.status_code.clone()
 }

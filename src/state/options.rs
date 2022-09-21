@@ -16,9 +16,3 @@ pub struct SipOptions {
     pub tag_local: String,
     pub tag_remote: Option<String>,
 }
-
-impl SipOptions {
-    pub fn update_cld(&mut self, cld: String) {
-        self.cld = Some(cld);
-    }
-}

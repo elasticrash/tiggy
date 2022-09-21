@@ -31,7 +31,7 @@ pub fn register_ua(
     let mut dialogs = locked_state.get_dialogs().unwrap();
 
     let register = SipOptions {
-        branch: "z9hG4bKnashds8".to_string(),
+        branch: "z9hG4bKtiggyD".to_string(),
         extension: conf.extension.to_string(),
         ip: ip.to_string(),
         md5: None,
@@ -76,7 +76,7 @@ pub fn register_ua(
                 transaction.local.as_ref().unwrap().to_string(),
                 socket,
                 silent,
-                &logs,
+                logs,
             );
         }
     }

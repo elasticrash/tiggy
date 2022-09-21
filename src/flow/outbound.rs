@@ -2,7 +2,7 @@ use crate::{
     commands::{helper::get_remote_tag, ok::ok},
     composer::communication::Auth,
     config::JSONConfiguration,
-    log,
+    log::{self, flog, print_msg},
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::SipOptions,
@@ -36,8 +36,10 @@ pub fn outbound_configure(
     let mut locked_state = dialog_state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
 
+    let call_id = Uuid::new_v4().to_string();
+
     let invite = SipOptions {
-        branch: "z9hG4bKnashds8".to_string(),
+        branch: "z9hG4bKtiggyD".to_string(),
         extension: conf.extension.to_string(),
         username: conf.username.clone(),
         sip_server: conf.sip_server.to_string(),
@@ -47,36 +49,39 @@ pub fn outbound_configure(
         cld: Some(destination.to_string()),
         md5: None,
         nonce: None,
-        call_id: Uuid::new_v4().to_string(),
+        call_id: call_id.clone(),
         tag_local: Uuid::new_v4().to_string(),
         tag_remote: None,
     };
 
-    dialogs.push(Dialog {
-        call_id: Uuid::new_v4().to_string(),
+    let dialog = Dialog {
+        call_id: call_id.clone(),
         diag_type: Direction::Outbound,
         local_tag: Uuid::new_v4().to_string(),
         remote_tag: None,
         transactions: Transactions::new(),
         time: Local::now(),
-    });
-
+    };
+    dialogs.push(dialog);
     for dg in dialogs.iter_mut() {
-        if matches!(dg.diag_type, Direction::Outbound) {
+        if dg.call_id == call_id {
+            flog(&vec![{ "inserting transactions" }]);
             let mut transactions = dg.transactions.get_transactions().unwrap();
-            transactions.push(Transaction {
+            let mut transaction = Transaction {
                 object: invite.clone(),
                 local: Some(invite.set_initial_register()),
                 remote: None,
                 send: 0,
                 tr_type: TransactionType::Typical,
-            });
-            let transaction = transactions.last_mut().unwrap();
+            };
             transaction.object.msg = Some(transaction.object.clone().set_initial_invite());
+            transactions.push(transaction);
         }
     }
 }
 
+/// Sends the Intial invite for an outbound call
+// TODO pass identifier for the call
 pub fn outbound_start(
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
@@ -87,9 +92,22 @@ pub fn outbound_start(
     let mut locked_state = state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
 
-    for dg in dialogs.iter_mut() {
+    print_msg(
+        format!("number of dialogs {}: ", dialogs.len()),
+        silent,
+        logs,
+    );
+
+    for dg in dialogs.iter_mut().rev() {
         if matches!(dg.diag_type, Direction::Outbound) {
             let mut tr = dg.transactions.get_transactions().unwrap();
+
+            print_msg(
+                format!("number of transactions {}: ", tr.len()),
+                silent,
+                logs,
+            );
+
             let mut transaction = tr.last_mut().unwrap();
             transaction.local = transaction.object.set_initial_invite().into();
 
@@ -107,16 +125,16 @@ pub fn outbound_start(
     }
 }
 
-pub fn outbound_request_flow(
-    msg: &SipMessage,
+pub fn process_request_outbound(
+    request: &Request,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     ip: &IpAddr,
     _state: &Arc<Mutex<Dialogs>>,
     silent: bool,
+    flow: &mut Direction,
     logs: &Arc<Mutex<VecDeque<String>>>,
-) -> Method {
-    let request = Request::try_from(msg.clone()).unwrap();
+) {
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
     log::slog(
@@ -127,6 +145,7 @@ pub fn outbound_request_flow(
     match request.method {
         Method::Ack => todo!(),
         Method::Bye => {
+            *flow = Direction::Inbound;
             send(
                 &SocketV4 {
                     ip: via.uri.host().to_string(),
@@ -135,7 +154,7 @@ pub fn outbound_request_flow(
                 ok(
                     conf,
                     &ip.clone().to_string(),
-                    &request,
+                    request,
                     rsip::Method::Bye,
                     false,
                 )
@@ -159,7 +178,7 @@ pub fn outbound_request_flow(
                 ok(
                     conf,
                     &ip.clone().to_string(),
-                    &request,
+                    request,
                     rsip::Method::Options,
                     false,
                 )
@@ -176,9 +195,8 @@ pub fn outbound_request_flow(
         Method::Subscribe => todo!(),
         Method::Update => todo!(),
     }
-    request.method
 }
-pub fn outbound_response_flow(
+pub fn process_response_outbound(
     response: &Response,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
@@ -186,7 +204,7 @@ pub fn outbound_response_flow(
     state: &Arc<Mutex<Dialogs>>,
     silent: bool,
     logs: &Arc<Mutex<VecDeque<String>>>,
-) -> StatusCode {
+) {
     let mut locked_state = state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
 
@@ -235,24 +253,8 @@ pub fn outbound_response_flow(
                 }
             }
         }
-        StatusCode::BusyHere => {
-            for dg in dialogs.iter_mut() {
-                if matches!(dg.diag_type, Direction::Outbound) {
-                    let mut tr = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = tr.last_mut().unwrap();
-                    transaction.remote = Some(SipMessage::Response(response.clone()));
-                }
-            }
-        }
-        StatusCode::SessionProgress => {
-            for dg in dialogs.iter_mut() {
-                if matches!(dg.diag_type, Direction::Outbound) {
-                    let mut tr = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = tr.last_mut().unwrap();
-                    transaction.remote = Some(SipMessage::Response(response.clone()));
-                }
-            }
-        }
+        StatusCode::BusyHere => {}
+        StatusCode::SessionProgress => {}
         StatusCode::OK => {
             for dg in dialogs.iter_mut() {
                 if matches!(dg.diag_type, Direction::Outbound) {
@@ -263,7 +265,7 @@ pub fn outbound_response_flow(
                         let remote_tag = get_remote_tag(&hstr);
 
                         let ack = SipOptions {
-                            branch: "z9hG4bKnashds8".to_string(),
+                            branch: "z9hG4bKtiggyD".to_string(),
                             extension: conf.extension.to_string(),
                             username: conf.username.clone(),
                             sip_server: conf.sip_server.to_string(),
@@ -295,5 +297,4 @@ pub fn outbound_response_flow(
         }
         _ => todo!(),
     }
-    response.status_code.clone()
 }

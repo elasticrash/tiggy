@@ -17,12 +17,12 @@ use std::io;
 use std::sync::mpsc::{self};
 use std::sync::{Arc, Mutex};
 use std::thread::{self};
-use std::{convert::TryFrom, time::Duration};
+use std::time::Duration;
 use ui::menu;
 use ui::menu::builder::build_menu;
 use ui::menu::draw::menu_and_refresh;
 
-use crate::flow::inbound::{inbound_request_flow, inbound_response_flow};
+use crate::flow::inbound::{process_request_inbound, process_response_inbound};
 use crate::transmissions::sockets::{peek, receive};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture, KeyCode};
 use crossterm::execute;
@@ -30,10 +30,9 @@ use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use flow::outbound::{
-    outbound_configure, outbound_request_flow, outbound_response_flow, outbound_start,
+    outbound_configure, outbound_start, process_request_outbound, process_response_outbound,
 };
 use log::print_msg;
-use rsip::{Method, Response};
 use state::dialogs::{Dialog, Dialogs, Direction, Transactions};
 use std::net::UdpSocket;
 use tui::backend::CrosstermBackend;
@@ -100,7 +99,7 @@ fn main() -> Result<(), io::Error> {
 
     let _handler = builder
         .spawn(move || {
-            let mut silent = false;
+            let mut silent = true;
             let mut flow = Direction::Inbound;
 
             let mut buffer = [0_u8; 65535];
@@ -112,24 +111,7 @@ fn main() -> Result<(), io::Error> {
                 .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
                 .expect("connect function failed");
 
-            let mut count: i32 = 0;
-
             let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new()));
-
-            dialog_state
-                .lock()
-                .unwrap()
-                .state
-                .lock()
-                .unwrap()
-                .push(Dialog {
-                    call_id: Uuid::new_v4().to_string(),
-                    diag_type: state::dialogs::Direction::Outbound,
-                    local_tag: Uuid::new_v4().to_string(),
-                    remote_tag: None,
-                    transactions: Transactions::new(),
-                    time: Local::now(),
-                });
 
             register_ua(&dialog_state, &conf, &ip, &mut socket, silent, &thread_logs);
 
@@ -140,56 +122,45 @@ fn main() -> Result<(), io::Error> {
                     let msg = skip_fail!(receive(&mut socket, &mut buffer, silent, &thread_logs));
 
                     match flow {
-                        Direction::Inbound => {
-                            if msg.is_response() {
-                                let response = Response::try_from(msg.clone()).unwrap();
-
-                                inbound_response_flow(
-                                    &response,
-                                    &mut socket,
-                                    &conf,
-                                    &dialog_state,
-                                    silent,
-                                    &thread_logs,
-                                );
-                            } else {
-                                inbound_request_flow(
-                                    &msg,
-                                    &mut socket,
-                                    &conf,
-                                    &ip,
-                                    silent,
-                                    &thread_logs,
-                                );
-                            }
-                        }
-                        Direction::Outbound => {
-                            if msg.is_response() {
-                                let response = Response::try_from(msg.clone()).unwrap();
-                                outbound_response_flow(
-                                    &response,
-                                    &mut socket,
-                                    &conf,
-                                    &ip,
-                                    &dialog_state,
-                                    silent,
-                                    &thread_logs,
-                                );
-                            } else {
-                                let inb_msg = outbound_request_flow(
-                                    &msg,
-                                    &mut socket,
-                                    &conf,
-                                    &ip,
-                                    &dialog_state,
-                                    silent,
-                                    &thread_logs,
-                                );
-                                if inb_msg == Method::Bye {
-                                    flow = Direction::Inbound;
-                                }
-                            }
-                        }
+                        Direction::Inbound => match msg {
+                            rsip::SipMessage::Request(request) => process_request_inbound(
+                                &request,
+                                &mut socket,
+                                &conf,
+                                &ip,
+                                silent,
+                                &thread_logs,
+                            ),
+                            rsip::SipMessage::Response(response) => process_response_inbound(
+                                &response,
+                                &mut socket,
+                                &conf,
+                                &dialog_state,
+                                silent,
+                                &thread_logs,
+                            ),
+                        },
+                        Direction::Outbound => match msg {
+                            rsip::SipMessage::Request(request) => process_request_outbound(
+                                &request,
+                                &mut socket,
+                                &conf,
+                                &ip,
+                                &dialog_state,
+                                silent,
+                                &mut flow,
+                                &thread_logs,
+                            ),
+                            rsip::SipMessage::Response(response) => process_response_outbound(
+                                &response,
+                                &mut socket,
+                                &conf,
+                                &ip,
+                                &dialog_state,
+                                silent,
+                                &thread_logs,
+                            ),
+                        },
                     }
                 }
 
@@ -224,15 +195,9 @@ fn main() -> Result<(), io::Error> {
                                 silent = !silent;
                             }
                             menu::builder::MenuType::Dial => {
+                                print_msg("outbound_configure".to_string(), true, &thread_logs);
                                 flow = Direction::Outbound;
-                                {
-                                    outbound_configure(
-                                        &conf,
-                                        &ip,
-                                        &argument.clone(),
-                                        &dialog_state,
-                                    );
-                                }
+                                outbound_configure(&conf, &ip, &argument.clone(), &dialog_state);
                                 outbound_start(
                                     &mut socket,
                                     &conf,
