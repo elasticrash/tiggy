@@ -5,7 +5,6 @@ mod composer;
 mod config;
 mod flow;
 mod log;
-mod menu;
 mod startup;
 mod state;
 mod transmissions;
@@ -15,13 +14,17 @@ use chrono::prelude::*;
 use startup::registration::register_ua;
 use std::collections::VecDeque;
 use std::io;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self};
 use std::sync::{Arc, Mutex};
 use std::thread::{self};
-use std::time::Instant;
 use std::{convert::TryFrom, time::Duration};
+use ui::menu;
+use ui::menu::builder::build_menu;
+use ui::menu::draw::menu_and_refresh;
 
-use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
+use crate::flow::inbound::{inbound_request_flow, inbound_response_flow};
+use crate::transmissions::sockets::{peek, receive};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture, KeyCode};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -33,16 +36,11 @@ use log::print_msg;
 use rsip::{Method, Response};
 use state::dialogs::{Dialog, Dialogs, Direction, Transactions};
 use std::net::UdpSocket;
-use tui::backend::{Backend, CrosstermBackend};
+use tui::backend::CrosstermBackend;
 use tui::widgets::{Block, Borders};
 use tui::Terminal;
-use ui::app::{ui, App, InputMode};
+use ui::app::App;
 use uuid::Uuid;
-
-use crate::flow::inbound::{inbound_request_flow, inbound_response_flow};
-use crate::transmissions::sockets::{peek, receive};
-
-use crate::menu::builder::build_menu;
 
 macro_rules! skip_fail {
     ($res:expr) => {
@@ -228,21 +226,12 @@ fn main() -> Result<(), io::Error> {
                             menu::builder::MenuType::Dial => {
                                 flow = Direction::Outbound;
                                 {
-                                    let mut locked_state = dialog_state.lock().unwrap();
-                                    let mut dialogs = locked_state.get_dialogs().unwrap();
-
-                                    for dg in dialogs.iter_mut() {
-                                        if matches!(dg.diag_type, Direction::Outbound) {
-                                            let mut tr =
-                                                dg.transactions.get_transactions().unwrap();
-                                            let mut transaction = tr.last_mut().unwrap();
-                                            transaction.object.update_cld(argument.clone());
-
-                                            transaction.object.msg = Some(
-                                                transaction.object.clone().set_initial_invite(),
-                                            );
-                                        }
-                                    }
+                                    outbound_configure(
+                                        &conf,
+                                        &ip,
+                                        &argument.clone(),
+                                        &dialog_state,
+                                    );
                                 }
                                 outbound_start(
                                     &mut socket,
@@ -283,79 +272,6 @@ fn main() -> Result<(), io::Error> {
     }
 
     Ok(())
-}
-
-fn menu_and_refresh<B: Backend>(
-    terminal: &mut Terminal<B>,
-    tx: &Sender<String>,
-    logs: &Arc<Mutex<VecDeque<String>>>,
-    mut app: App,
-) -> io::Result<()> {
-    let cmd_menu = Arc::new(build_menu());
-    let mut last_tick = Instant::now();
-
-    loop {
-        terminal.draw(|f| ui(f, &app, logs))?;
-        let timeout = app
-            .tick_rate
-            .checked_sub(last_tick.elapsed())
-            .unwrap_or_else(|| Duration::from_secs(0));
-        if crossterm::event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                match app.input_mode {
-                    InputMode::Normal => match cmd_menu.iter().find(|&x| x.value == key.code) {
-                        Some(item) => {
-                            let key_value = match item.value {
-                                KeyCode::Char(c) => c,
-                                _ => 'u',
-                            };
-
-                            match item.category {
-                                menu::builder::MenuType::DisplayMenu => {
-                                    log::print_menu();
-                                }
-                                menu::builder::MenuType::Exit => {
-                                    log::slog("Terminating", logs);
-                                    thread::sleep(Duration::from_millis(300));
-                                    return Ok(());
-                                }
-                                menu::builder::MenuType::Silent => {
-                                    tx.send(key_value.to_string()).unwrap();
-                                }
-                                menu::builder::MenuType::Dial => {
-                                    app.input_mode = InputMode::Editing;
-                                }
-                                menu::builder::MenuType::Answer => {
-                                    todo!();
-                                }
-                            }
-                        }
-                        None => log::slog("Invalid Command", logs),
-                    },
-                    InputMode::Editing => match key.code {
-                        KeyCode::Enter => {
-                            app.input_mode = InputMode::Normal;
-                            tx.send(format!("d|{}", app.input.trim().to_owned()))
-                                .unwrap();
-                        }
-                        KeyCode::Char(c) => {
-                            app.input.push(c);
-                        }
-                        KeyCode::Backspace => {
-                            app.input.pop();
-                        }
-                        KeyCode::Esc => {
-                            app.input_mode = InputMode::Normal;
-                        }
-                        _ => {}
-                    },
-                }
-            }
-            if last_tick.elapsed() >= app.tick_rate {
-                last_tick = Instant::now();
-            }
-        }
-    }
 }
 
 fn is_string_numeric(str: String) -> bool {

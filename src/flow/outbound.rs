@@ -31,8 +31,11 @@ pub fn outbound_configure(
     conf: &JSONConfiguration,
     ip: &IpAddr,
     destination: &str,
-    state: &Arc<Mutex<Dialogs>>,
+    dialog_state: &Arc<Mutex<Dialogs>>,
 ) {
+    let mut locked_state = dialog_state.lock().unwrap();
+    let mut dialogs = locked_state.get_dialogs().unwrap();
+
     let invite = SipOptions {
         branch: "z9hG4bKnashds8".to_string(),
         extension: conf.extension.to_string(),
@@ -49,9 +52,7 @@ pub fn outbound_configure(
         tag_remote: None,
     };
 
-    let mut locked_state = state.lock().unwrap();
-
-    locked_state.state.lock().unwrap().push(Dialog {
+    dialogs.push(Dialog {
         call_id: Uuid::new_v4().to_string(),
         diag_type: Direction::Outbound,
         local_tag: Uuid::new_v4().to_string(),
@@ -60,18 +61,18 @@ pub fn outbound_configure(
         time: Local::now(),
     });
 
-    let mut dialogs = locked_state.get_dialogs().unwrap();
-
     for dg in dialogs.iter_mut() {
         if matches!(dg.diag_type, Direction::Outbound) {
             let mut transactions = dg.transactions.get_transactions().unwrap();
             transactions.push(Transaction {
                 object: invite.clone(),
-                local: Some(invite.set_initial_invite()),
+                local: Some(invite.set_initial_register()),
                 remote: None,
                 send: 0,
                 tr_type: TransactionType::Typical,
-            })
+            });
+            let transaction = transactions.last_mut().unwrap();
+            transaction.object.msg = Some(transaction.object.clone().set_initial_invite());
         }
     }
 }
@@ -226,6 +227,24 @@ pub fn outbound_response_flow(
             }
         }
         StatusCode::Ringing => {
+            for dg in dialogs.iter_mut() {
+                if matches!(dg.diag_type, Direction::Outbound) {
+                    let mut tr = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = tr.last_mut().unwrap();
+                    transaction.remote = Some(SipMessage::Response(response.clone()));
+                }
+            }
+        }
+        StatusCode::BusyHere => {
+            for dg in dialogs.iter_mut() {
+                if matches!(dg.diag_type, Direction::Outbound) {
+                    let mut tr = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = tr.last_mut().unwrap();
+                    transaction.remote = Some(SipMessage::Response(response.clone()));
+                }
+            }
+        }
+        StatusCode::SessionProgress => {
             for dg in dialogs.iter_mut() {
                 if matches!(dg.diag_type, Direction::Outbound) {
                     let mut tr = dg.transactions.get_transactions().unwrap();

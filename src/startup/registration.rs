@@ -9,7 +9,6 @@ use uuid::Uuid;
 
 use crate::{
     config::JSONConfiguration,
-    log::print_msg,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::SipOptions,
