@@ -1,7 +1,6 @@
 use rsip::headers::{CSeq, Contact, UntypedHeader, UserAgent, Via};
 use rsip::{Header, SipMessage};
 
-use crate::log::flog;
 use crate::state::options::SipOptions;
 
 use super::helper::get_base_uri;
@@ -12,7 +11,7 @@ impl SipOptions {
         via: &Via,
         rr: Vec<&Header>,
         cnt: &Contact,
-        cseq: &CSeq,
+        _cseq: &CSeq,
     ) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
@@ -27,7 +26,7 @@ impl SipOptions {
             .into(),
         );
 
-        let lroute = rr.last().clone().unwrap().to_string();
+        let lroute = rr.last().unwrap().to_string();
         let (_, route_value) = lroute.split_at(14).to_owned();
 
         headers.push(rsip::Header::Route(rsip::headers::Route::new(
@@ -84,7 +83,7 @@ impl SipOptions {
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(
-                    rem_last(&contact_value.to_string()).to_string(),
+                    rem_last(contact_value).to_string(),
                 )
                 .into(),
                 ..Default::default()

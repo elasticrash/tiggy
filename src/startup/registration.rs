@@ -40,8 +40,7 @@ pub fn register_ua(
             now.minute(),
             now.second(),
             now.timestamp_millis()
-        )
-        .to_string(),
+        ),
         extension: conf.extension.to_string(),
         ip: ip.to_string(),
         md5: None,

@@ -10,7 +10,6 @@ mod state;
 mod transmissions;
 mod ui;
 
-use chrono::prelude::*;
 use startup::registration::register_ua;
 use std::collections::VecDeque;
 use std::io;
@@ -33,13 +32,12 @@ use flow::outbound::{
     outbound_configure, outbound_start, process_request_outbound, process_response_outbound,
 };
 use log::print_msg;
-use state::dialogs::{Dialog, Dialogs, Direction, Transactions};
+use state::dialogs::{Dialogs, Direction};
 use std::net::UdpSocket;
 use tui::backend::CrosstermBackend;
 use tui::widgets::{Block, Borders};
 use tui::Terminal;
 use ui::app::App;
-use uuid::Uuid;
 
 macro_rules! skip_fail {
     ($res:expr) => {

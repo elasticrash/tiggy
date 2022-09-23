@@ -33,8 +33,7 @@ pub fn get_via(ip: &str, port: &str) -> rsip::Header {
                 now.minute(),
                 now.second(),
                 now.timestamp_millis()
-            )
-            .to_string(),
+            ),
         ))],
     }
     .into()

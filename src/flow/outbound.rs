@@ -48,8 +48,7 @@ pub fn outbound_configure(
             now.minute(),
             now.second(),
             now.timestamp_millis()
-        )
-        .to_string(),
+        ),
         extension: conf.extension.to_string(),
         username: conf.username.clone(),
         sip_server: conf.sip_server.to_string(),
@@ -313,9 +312,9 @@ pub fn process_response_outbound(
                                 port: conf.clone().sip_port,
                             },
                             ack.create_ack(
-                                &via_from_invite,
+                                via_from_invite,
                                 response.headers.get_record_route_header_array().clone(),
-                                &contact,
+                                contact,
                                 cseq_count,
                             )
                             .to_string(),
