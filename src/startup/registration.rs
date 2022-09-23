@@ -29,9 +29,19 @@ pub fn register_ua(
 ) {
     let mut locked_state = dialog_state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
+    let now = Utc::now();
 
     let register = SipOptions {
-        branch: "z9hG4bKtiggyD".to_string(),
+        branch: format!(
+            "z9hG4bK{}{}{}{}{}{}",
+            now.month(),
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second(),
+            now.timestamp_millis()
+        )
+        .to_string(),
         extension: conf.extension.to_string(),
         ip: ip.to_string(),
         md5: None,

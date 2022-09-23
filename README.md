@@ -5,8 +5,8 @@ A Naive implementation of non Media enabled cli softphone. This my rust/sip play
 Features & Flaws:
 
 * Autoanswers incoming calls
-* Outbound calls (partial working, missing acks)
-* State is in a messy state. Fixing it slowly, experimenting.
+* Outbound calls
+* State is in a messy state, but kind of useable
 
 
 ### Config

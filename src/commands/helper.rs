@@ -12,8 +12,11 @@ pub fn get_base_uri(number: &str, server: &str, port: &str) -> rsip::Uri {
         ..Default::default()
     }
 }
+use chrono::prelude::*;
 
 pub fn get_via(ip: &str, port: &str) -> rsip::Header {
+    let now = Utc::now();
+
     rsip::typed::Via {
         version: rsip::Version::V2,
         transport: rsip::Transport::Udp,
@@ -22,7 +25,16 @@ pub fn get_via(ip: &str, port: &str) -> rsip::Header {
             ..Default::default()
         },
         params: vec![rsip::Param::Branch(rsip::param::Branch::new(
-            "z9hG4bKtiggyD",
+            format!(
+                "z9hG4bK{}{}{}{}{}{}",
+                now.month(),
+                now.day(),
+                now.hour(),
+                now.minute(),
+                now.second(),
+                now.timestamp_millis()
+            )
+            .to_string(),
         ))],
     }
     .into()

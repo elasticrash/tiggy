@@ -1,6 +1,6 @@
 use crate::{
     commands::{helper::get_remote_tag, ok::ok},
-    composer::communication::Auth,
+    composer::{communication::Auth, header_extension::CustomHeaderExtension},
     config::JSONConfiguration,
     log::{self, flog, print_msg},
     state::{
@@ -37,9 +37,19 @@ pub fn outbound_configure(
     let mut dialogs = locked_state.get_dialogs().unwrap();
 
     let call_id = Uuid::new_v4().to_string();
+    let now = Utc::now();
 
     let invite = SipOptions {
-        branch: "z9hG4bKtiggyD".to_string(),
+        branch: format!(
+            "z9hG4bK{}{}{}{}{}{}",
+            now.month(),
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second(),
+            now.timestamp_millis()
+        )
+        .to_string(),
         extension: conf.extension.to_string(),
         username: conf.username.clone(),
         sip_server: conf.sip_server.to_string(),
@@ -263,9 +273,19 @@ pub fn process_response_outbound(
                     if transaction.local.is_some() && transaction.remote.is_some() {
                         let hstr = response.clone().to_header().unwrap().to_string();
                         let remote_tag = get_remote_tag(&hstr);
+                        let now = Utc::now();
 
                         let ack = SipOptions {
-                            branch: "z9hG4bKtiggyD".to_string(),
+                            branch: format!(
+                                "z9hG4bK{}{}{}{}{}{}",
+                                now.month(),
+                                now.day(),
+                                now.hour(),
+                                now.minute(),
+                                now.second(),
+                                now.timestamp_millis()
+                            )
+                            .to_string(),
                             extension: conf.extension.to_string(),
                             username: conf.username.clone(),
                             sip_server: conf.sip_server.to_string(),
@@ -281,12 +301,24 @@ pub fn process_response_outbound(
                         };
 
                         transaction.send += 1;
+
+                        let via_from_invite =
+                            transaction.local.as_ref().unwrap().via_header().unwrap();
+                        let cseq_count = transaction.local.as_ref().unwrap().cseq_header().unwrap();
+                        let contact = response.contact_header().unwrap();
+
                         send(
                             &SocketV4 {
                                 ip: conf.clone().sip_server,
                                 port: conf.clone().sip_port,
                             },
-                            ack.create_ack().to_string(),
+                            ack.create_ack(
+                                &via_from_invite,
+                                response.headers.get_record_route_header_array().clone(),
+                                &contact,
+                                cseq_count,
+                            )
+                            .to_string(),
                             socket,
                             silent,
                             logs,

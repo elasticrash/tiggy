@@ -1,43 +1,39 @@
-use rsip::headers::{Allow, UntypedHeader, UserAgent};
+use rsip::headers::{CSeq, Contact, UntypedHeader, UserAgent, Via};
 use rsip::{Header, SipMessage};
 
+use crate::log::flog;
 use crate::state::options::SipOptions;
 
 use super::helper::get_base_uri;
 
 impl SipOptions {
-    pub fn create_ack(&self) -> SipMessage {
+    pub fn create_ack(
+        &self,
+        via: &Via,
+        rr: Vec<&Header>,
+        cnt: &Contact,
+        cseq: &CSeq,
+    ) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
-        headers.push(
-            rsip::typed::Via {
-                version: rsip::Version::V2,
-                transport: rsip::Transport::Udp,
-                uri: rsip::Uri {
-                    host_with_port: (rsip::Domain::from(format!(
-                        "{}:{}",
-                        &self.ip, &self.sip_port
-                    )))
-                    .into(),
-                    ..Default::default()
-                },
-                params: vec![rsip::Param::Branch(rsip::param::Branch::new(
-                    "z9hG4bKtiggyD",
-                ))],
-            }
-            .into(),
-        );
+        headers.push(Header::Via(via.clone()));
         headers.push(
             rsip::typed::From {
                 display_name: Some(self.username.to_string()),
                 uri: base_uri.clone(),
-                params: vec![rsip::Param::Tag(rsip::param::Tag::new(
-                    self.tag_remote.as_ref().unwrap(),
-                ))],
+                params: vec![rsip::Param::Tag(rsip::param::Tag::new(&self.tag_local))],
             }
             .into(),
         );
+
+        let lroute = rr.last().clone().unwrap().to_string();
+        let (_, route_value) = lroute.split_at(14).to_owned();
+
+        headers.push(rsip::Header::Route(rsip::headers::Route::new(
+            route_value.to_string(),
+        )));
+
         headers.push(
             rsip::typed::To {
                 display_name: Some(self.cld.as_ref().unwrap().to_string()),
@@ -52,13 +48,21 @@ impl SipOptions {
                     .into(),
                     ..Default::default()
                 },
-                params: vec![rsip::Param::Tag(rsip::param::Tag::new(&self.tag_local))],
+                params: vec![rsip::Param::Tag(rsip::param::Tag::new(
+                    self.tag_remote.as_ref().unwrap(),
+                ))],
             }
             .into(),
         );
 
         headers.push(rsip::headers::CallId::from(self.call_id.as_str()).into());
-
+        headers.push(
+            rsip::typed::CSeq {
+                seq: 2,
+                method: rsip::Method::Ack,
+            }
+            .into(),
+        );
         headers.push(
             rsip::typed::Contact {
                 display_name: Some(self.username.to_string()),
@@ -68,27 +72,20 @@ impl SipOptions {
             .into(),
         );
         headers.push(rsip::headers::MaxForwards::from(70).into());
-        headers.push(
-            rsip::typed::CSeq {
-                seq: 1,
-                method: rsip::Method::Ack,
-            }
-            .into(),
-        );
-        headers.push(rsip::headers::ContentLength::default().into());
-        headers.push(Header::Allow(Allow::new(
-            "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
-        )));
+
         headers.push(Header::UserAgent(UserAgent::new("Tiggy")));
+        headers.push(rsip::headers::ContentLength::default().into());
+
+        let mut l_contact = cnt.to_string();
+        let (_, contact_value) = l_contact.split_at_mut(14);
 
         let response: SipMessage = rsip::Request {
             method: rsip::Method::Ack,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
-                host_with_port: rsip::Domain::from(format!(
-                    "{}@{}:{}",
-                    &self.username, &self.sip_server, &self.sip_port
-                ))
+                host_with_port: rsip::Domain::from(
+                    rem_last(&contact_value.to_string()).to_string(),
+                )
                 .into(),
                 ..Default::default()
             },
@@ -100,4 +97,10 @@ impl SipOptions {
 
         response
     }
+}
+
+fn rem_last(value: &str) -> &str {
+    let mut chars = value.chars();
+    chars.next_back();
+    chars.as_str()
 }
