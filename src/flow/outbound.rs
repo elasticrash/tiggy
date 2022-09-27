@@ -2,10 +2,10 @@ use crate::{
     commands::{helper::get_remote_tag, ok::ok},
     composer::{communication::Auth, header_extension::CustomHeaderExtension},
     config::JSONConfiguration,
-    log::{self, flog, print_msg},
+    log::{self, print_msg},
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
-        options::SipOptions,
+        options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
     transmissions::sockets::{send, SocketV4},
@@ -74,7 +74,6 @@ pub fn outbound_configure(
     dialogs.push(dialog);
     for dg in dialogs.iter_mut() {
         if dg.call_id == call_id {
-            flog(&vec![{ "inserting transactions" }]);
             let mut transactions = dg.transactions.get_transactions().unwrap();
             let mut transaction = Transaction {
                 object: invite.clone(),
@@ -95,27 +94,19 @@ pub fn outbound_start(
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
-    silent: bool,
+    vrb: &Verbosity,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let mut locked_state = state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
 
-    print_msg(
-        format!("number of dialogs {}: ", dialogs.len()),
-        silent,
-        logs,
-    );
+    print_msg(format!("number of dialogs {}: ", dialogs.len()), vrb, logs);
 
     for dg in dialogs.iter_mut().rev() {
         if matches!(dg.diag_type, Direction::Outbound) {
             let mut tr = dg.transactions.get_transactions().unwrap();
 
-            print_msg(
-                format!("number of transactions {}: ", tr.len()),
-                silent,
-                logs,
-            );
+            print_msg(format!("number of transactions {}: ", tr.len()), vrb, logs);
 
             let mut transaction = tr.last_mut().unwrap();
             transaction.local = transaction.object.set_initial_invite().into();
@@ -127,9 +118,10 @@ pub fn outbound_start(
                 },
                 transaction.local.clone().unwrap().to_string(),
                 socket,
-                silent,
+                vrb,
                 logs,
             );
+            break;
         }
     }
 }
@@ -138,10 +130,8 @@ pub fn process_request_outbound(
     request: &Request,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
-    ip: &IpAddr,
     _state: &Arc<Mutex<Dialogs>>,
-    silent: bool,
-    flow: &mut Direction,
+    settings: &mut SelfConfiguration,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let via: Via = request.via_header().unwrap().typed().unwrap();
@@ -154,7 +144,7 @@ pub fn process_request_outbound(
     match request.method {
         Method::Ack => todo!(),
         Method::Bye => {
-            *flow = Direction::Inbound;
+            settings.flow = Direction::Inbound;
             send(
                 &SocketV4 {
                     ip: via.uri.host().to_string(),
@@ -162,14 +152,14 @@ pub fn process_request_outbound(
                 },
                 ok(
                     conf,
-                    &ip.clone().to_string(),
+                    &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Bye,
                     false,
                 )
                 .to_string(),
                 socket,
-                silent,
+                &settings.verbosity,
                 logs,
             );
         }
@@ -186,14 +176,14 @@ pub fn process_request_outbound(
                 },
                 ok(
                     conf,
-                    &ip.clone().to_string(),
+                    &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Options,
                     false,
                 )
                 .to_string(),
                 socket,
-                silent,
+                &settings.verbosity,
                 logs,
             );
         }
@@ -209,9 +199,8 @@ pub fn process_response_outbound(
     response: &Response,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
-    ip: &IpAddr,
     state: &Arc<Mutex<Dialogs>>,
-    silent: bool,
+    settings: &mut SelfConfiguration,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let mut locked_state = state.lock().unwrap();
@@ -231,11 +220,11 @@ pub fn process_response_outbound(
                     .clone(),
             )
             .unwrap();
-            for dg in dialogs.iter_mut() {
+            for dg in dialogs.iter_mut().rev() {
                 if matches!(dg.diag_type, Direction::Outbound) {
                     let mut tr = dg.transactions.get_transactions().unwrap();
                     let mut transaction = tr.last_mut().unwrap();
-                    transaction.object.nonce = Some(auth.nonce.clone());
+                    transaction.object.nonce = Some(auth.nonce);
                     transaction.object.set_auth(conf, "INVITE");
                     transaction.object.msg = Some(transaction.local.clone().unwrap());
                     transaction.send = 1;
@@ -247,25 +236,27 @@ pub fn process_response_outbound(
                         },
                         transaction.object.push_auth_to_invite().to_string(),
                         socket,
-                        silent,
+                        &settings.verbosity,
                         logs,
                     );
+                    break;
                 }
             }
         }
         StatusCode::Ringing => {
-            for dg in dialogs.iter_mut() {
+            for dg in dialogs.iter_mut().rev() {
                 if matches!(dg.diag_type, Direction::Outbound) {
                     let mut tr = dg.transactions.get_transactions().unwrap();
                     let mut transaction = tr.last_mut().unwrap();
                     transaction.remote = Some(SipMessage::Response(response.clone()));
+                    break;
                 }
             }
         }
         StatusCode::BusyHere => {}
         StatusCode::SessionProgress => {}
         StatusCode::OK => {
-            for dg in dialogs.iter_mut() {
+            for dg in dialogs.iter_mut().rev() {
                 if matches!(dg.diag_type, Direction::Outbound) {
                     let mut tr = dg.transactions.get_transactions().unwrap();
                     let mut transaction = tr.last_mut().unwrap();
@@ -283,13 +274,12 @@ pub fn process_response_outbound(
                                 now.minute(),
                                 now.second(),
                                 now.timestamp_millis()
-                            )
-                            .to_string(),
+                            ),
                             extension: conf.extension.to_string(),
                             username: conf.username.clone(),
                             sip_server: conf.sip_server.to_string(),
                             sip_port: conf.sip_port.to_string(),
-                            ip: ip.to_string(),
+                            ip: settings.ip.to_string(),
                             msg: None,
                             cld: transaction.object.cld.clone(),
                             call_id: transaction.object.call_id.clone(),
@@ -319,10 +309,11 @@ pub fn process_response_outbound(
                             )
                             .to_string(),
                             socket,
-                            silent,
+                            &settings.verbosity,
                             logs,
                         );
                     }
+                    break;
                 }
             }
         }

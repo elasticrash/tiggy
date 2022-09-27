@@ -59,6 +59,28 @@ impl SipOptions {
 
         request
     }
+    pub fn unregister(&self) -> SipMessage {
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
+        headers.push(rsip::headers::Expires::from(0).into());
+        let request: SipMessage = rsip::Request {
+            method: rsip::Method::Register,
+            uri: rsip::Uri {
+                scheme: Some(rsip::Scheme::Sip),
+                host_with_port: rsip::Domain::from(format!(
+                    "{}:{}",
+                    &self.sip_server, &self.sip_port
+                ))
+                .into(),
+                ..Default::default()
+            },
+            version: rsip::Version::V2,
+            headers: headers.clone(),
+            body: Default::default(),
+        }
+        .into();
+
+        request
+    }
 }
 
 impl SipOptions {

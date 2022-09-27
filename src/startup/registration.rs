@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    net::{IpAddr, UdpSocket},
+    net::{UdpSocket},
     sync::{Arc, Mutex},
 };
 
@@ -11,7 +11,7 @@ use crate::{
     config::JSONConfiguration,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
-        options::SipOptions,
+        options::{SipOptions, Verbosity, SelfConfiguration},
         transactions::{Transaction, TransactionType},
     },
     transmissions::sockets::{send, SocketV4},
@@ -22,9 +22,8 @@ use crate::{
 pub fn register_ua(
     dialog_state: &Arc<Mutex<Dialogs>>,
     conf: &JSONConfiguration,
-    ip: &IpAddr,
     socket: &mut UdpSocket,
-    silent: bool,
+    settings: &mut SelfConfiguration,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let mut locked_state = dialog_state.lock().unwrap();
@@ -42,7 +41,7 @@ pub fn register_ua(
             now.timestamp_millis()
         ),
         extension: conf.extension.to_string(),
-        ip: ip.to_string(),
+        ip: settings.ip.to_string(),
         md5: None,
         sip_port: conf.sip_port.to_string(),
         sip_server: conf.sip_server.to_string(),
@@ -84,9 +83,37 @@ pub fn register_ua(
                 },
                 transaction.local.as_ref().unwrap().to_string(),
                 socket,
-                silent,
+                &settings.verbosity,
                 logs,
             );
         }
+    }
+}
+
+pub fn unregister_ua(
+    dialog_state: &Arc<Mutex<Dialogs>>,
+    conf: &JSONConfiguration,
+    socket: &mut UdpSocket,
+    vrb: &Verbosity,
+    logs: &Arc<Mutex<VecDeque<String>>>,
+) {
+    let mut locked_state = dialog_state.lock().unwrap();
+    let mut dialogs = locked_state.get_dialogs().unwrap();
+
+    for dg in dialogs.iter_mut() {
+        let mut tr = dg.transactions.get_transactions().unwrap();
+        let transaction = tr.first_mut().unwrap();
+        let unregister = transaction.object.unregister();
+
+        send(
+            &SocketV4 {
+                ip: conf.clone().sip_server,
+                port: conf.clone().sip_port,
+            },
+            unregister.to_string(),
+            socket,
+            vrb,
+            logs,
+        );
     }
 }

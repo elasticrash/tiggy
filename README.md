@@ -5,9 +5,10 @@ A Naive implementation of non Media enabled cli softphone. This my rust/sip play
 Features & Flaws:
 
 * Autoanswers incoming calls
-* Outbound calls
+* Can Make outbound calls
 * State is in a messy state, but kind of useable
-
+* For the time it logs all SIP messages in a file
+* Its only been tested in few specific setups
 
 ### Config
   ```JSON

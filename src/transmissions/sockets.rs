@@ -1,4 +1,4 @@
-use crate::log::print_msg;
+use crate::{log::print_msg, state::options::Verbosity};
 use rsip::SipMessage;
 use std::{
     collections::VecDeque,
@@ -16,11 +16,11 @@ pub fn send(
     s_conf: &SocketV4,
     msg: String,
     socket: &mut UdpSocket,
-    s: bool,
+    vrb: &Verbosity,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
-    print_msg("===>".to_string(), s, logs);
-    print_msg(msg.clone(), s, logs);
+    print_msg("===>".to_string(), vrb, logs);
+    print_msg(msg.clone(), vrb, logs);
 
     socket
         .send_to(msg.as_bytes(), format!("{}:{}", s_conf.ip, s_conf.port))
@@ -30,14 +30,14 @@ pub fn send(
 pub fn receive(
     socket: &mut UdpSocket,
     buffer: &mut [u8; 65535],
-    s: bool,
+    vrb: &Verbosity,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) -> Result<SipMessage, rsip::Error> {
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];
     let r_message_a = String::from_utf8_lossy(slice);
-    print_msg("<===".to_string(), s, logs);
-    print_msg(r_message_a.to_string(), s, logs);
+    print_msg("<===".to_string(), vrb, logs);
+    print_msg(r_message_a.to_string(), vrb, logs);
 
     SipMessage::try_from(r_message_a.to_string())
 }

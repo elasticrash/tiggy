@@ -35,6 +35,12 @@ pub struct Dialogs {
     pub state: Arc<Mutex<Vec<Dialog>>>,
 }
 
+impl Display for Dialog {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.call_id, self.time)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum DialogsLockError {
     FailedToLock,

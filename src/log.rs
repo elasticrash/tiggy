@@ -12,6 +12,8 @@ use tui::{
     text::{Span, Spans},
 };
 
+use crate::state::options::Verbosity;
+
 pub fn slog(log: &str, logs: &Arc<Mutex<VecDeque<String>>>) {
     let mut arr = logs.lock().unwrap();
     arr.push_back(format!(
@@ -36,25 +38,30 @@ pub fn print_menu() -> Vec<Spans<'static>> {
     ]
 }
 
-pub fn print_msg(msg: String, s: bool, logs: &Arc<Mutex<VecDeque<String>>>) {
+pub fn print_msg(msg: String, vrb: &Verbosity, logs: &Arc<Mutex<VecDeque<String>>>) {
     let print: Vec<&str> = msg.split("\r\n").collect();
     let mut arr = logs.lock().unwrap();
-    if !s {
-        for line in print.clone() {
-            arr.push_back(format!(
-                "<{:?}> [{}] - {:?}",
-                thread::current().id(),
-                line!(),
-                line
-            ));
+
+    match vrb {
+        Verbosity::Detailed => {}
+        Verbosity::Diagnostic => {
+            for line in print.clone() {
+                arr.push_back(format!(
+                    "<{:?}> [{}] - {:?}",
+                    thread::current().id(),
+                    line!(),
+                    line
+                ));
+            }
         }
-    } else {
-        arr.push_back(format!(
+        Verbosity::Minimal => arr.push_back(format!(
             "<{:?}> [{}] - {:?}",
             thread::current().id(),
             line!(),
             print[0]
-        ));
+        )),
+        Verbosity::Normal => {}
+        Verbosity::Quiet => {}
     }
     // logs to file
     flog(&print);

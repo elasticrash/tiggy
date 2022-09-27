@@ -3,7 +3,10 @@ use crate::{
     composer::communication::Auth,
     config::JSONConfiguration,
     log,
-    state::dialogs::{Dialogs, Direction},
+    state::{
+        dialogs::{Dialogs, Direction},
+        options::SelfConfiguration,
+    },
     transmissions::sockets::{send, SocketV4},
 };
 use rsip::{
@@ -17,7 +20,7 @@ use rsip::{
 use std::{
     collections::VecDeque,
     convert::TryFrom,
-    net::{IpAddr, UdpSocket},
+    net::UdpSocket,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -27,8 +30,7 @@ pub fn process_request_inbound(
     request: &Request,
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
-    ip: &IpAddr,
-    silent: bool,
+    settings: &mut SelfConfiguration,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let via: Via = request.via_header().unwrap().typed().unwrap();
@@ -49,14 +51,14 @@ pub fn process_request_inbound(
                 },
                 ok(
                     conf,
-                    &ip.clone().to_string(),
+                    &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Bye,
                     false,
                 )
                 .to_string(),
                 socket,
-                silent,
+                &settings.verbosity,
                 logs,
             );
         }
@@ -68,9 +70,9 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                trying(conf, &ip.clone().to_string(), request).to_string(),
+                trying(conf, &settings.ip.clone().to_string(), request).to_string(),
                 socket,
-                silent,
+                &settings.verbosity,
                 logs,
             );
             thread::sleep(Duration::from_secs(1));
@@ -81,14 +83,14 @@ pub fn process_request_inbound(
                 },
                 ok(
                     conf,
-                    &ip.clone().to_string(),
+                    &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Invite,
                     true,
                 )
                 .to_string(),
                 socket,
-                silent,
+                &settings.verbosity,
                 logs,
             );
         }
@@ -102,14 +104,14 @@ pub fn process_request_inbound(
                 },
                 ok(
                     conf,
-                    &ip.clone().to_string(),
+                    &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Options,
                     false,
                 )
                 .to_string(),
                 socket,
-                silent,
+                &settings.verbosity,
                 logs,
             );
         }
@@ -126,7 +128,7 @@ pub fn process_response_inbound(
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
-    silent: bool,
+    settings: &mut SelfConfiguration,
     logs: &Arc<Mutex<VecDeque<String>>>,
 ) {
     let mut locked_state = state.lock().unwrap();
@@ -150,7 +152,7 @@ pub fn process_response_inbound(
                 if matches!(dg.diag_type, Direction::Inbound) {
                     let mut tr = dg.transactions.get_transactions().unwrap();
                     let mut transaction = tr.last_mut().unwrap();
-                    transaction.object.nonce = Some(auth.nonce.clone());
+                    transaction.object.nonce = Some(auth.nonce);
                     transaction.object.set_auth(conf, "REGISTER");
                     transaction.object.msg = transaction.local.clone();
 
@@ -161,9 +163,10 @@ pub fn process_response_inbound(
                         },
                         transaction.object.push_auth_to_register().to_string(),
                         socket,
-                        silent,
+                        &settings.verbosity,
                         logs,
                     );
+                    break;
                 }
             }
         }

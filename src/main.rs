@@ -10,7 +10,8 @@ mod state;
 mod transmissions;
 mod ui;
 
-use startup::registration::register_ua;
+use startup::registration::{register_ua, unregister_ua};
+use state::options::{SelfConfiguration, Verbosity};
 use std::collections::VecDeque;
 use std::io;
 use std::sync::mpsc::{self};
@@ -59,7 +60,7 @@ fn main() -> Result<(), io::Error> {
     let is_there_an_ipv4 = if_addrs::get_if_addrs().unwrap().into_iter().find(|ip| {
         print_msg(
             format!("available interface:, {}", ip.addr.ip()),
-            false,
+            &Verbosity::Normal,
             &logs,
         );
         ip.ip().is_ipv4()
@@ -97,8 +98,11 @@ fn main() -> Result<(), io::Error> {
 
     let _handler = builder
         .spawn(move || {
-            let mut silent = true;
-            let mut flow = Direction::Inbound;
+            let mut settings = SelfConfiguration {
+                flow: Direction::Inbound,
+                verbosity: Verbosity::Minimal,
+                ip: &ip,
+            };
 
             let mut buffer = [0_u8; 65535];
 
@@ -111,22 +115,32 @@ fn main() -> Result<(), io::Error> {
 
             let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new()));
 
-            register_ua(&dialog_state, &conf, &ip, &mut socket, silent, &thread_logs);
+            register_ua(
+                &dialog_state,
+                &conf,
+                &mut socket,
+                &mut settings,
+                &thread_logs,
+            );
 
             'thread: loop {
                 let packets_queued = peek(&mut socket, &mut buffer);
 
                 if packets_queued > 0 {
-                    let msg = skip_fail!(receive(&mut socket, &mut buffer, silent, &thread_logs));
+                    let msg = skip_fail!(receive(
+                        &mut socket,
+                        &mut buffer,
+                        &settings.verbosity,
+                        &thread_logs
+                    ));
 
-                    match flow {
+                    match settings.flow {
                         Direction::Inbound => match msg {
                             rsip::SipMessage::Request(request) => process_request_inbound(
                                 &request,
                                 &mut socket,
                                 &conf,
-                                &ip,
-                                silent,
+                                &mut settings,
                                 &thread_logs,
                             ),
                             rsip::SipMessage::Response(response) => process_response_inbound(
@@ -134,7 +148,7 @@ fn main() -> Result<(), io::Error> {
                                 &mut socket,
                                 &conf,
                                 &dialog_state,
-                                silent,
+                                &mut settings,
                                 &thread_logs,
                             ),
                         },
@@ -143,19 +157,16 @@ fn main() -> Result<(), io::Error> {
                                 &request,
                                 &mut socket,
                                 &conf,
-                                &ip,
                                 &dialog_state,
-                                silent,
-                                &mut flow,
+                                &mut settings,
                                 &thread_logs,
                             ),
                             rsip::SipMessage::Response(response) => process_response_outbound(
                                 &response,
                                 &mut socket,
                                 &conf,
-                                &ip,
                                 &dialog_state,
-                                silent,
+                                &mut settings,
                                 &thread_logs,
                             ),
                         },
@@ -186,21 +197,33 @@ fn main() -> Result<(), io::Error> {
 
                     match action_menu.iter().find(|&x| x.value == key_code_command) {
                         Some(item) => match item.category {
-                            menu::builder::MenuType::Exit => {
+                            menu::builder::MenuType::Unregister => {
+                                unregister_ua(
+                                    &dialog_state,
+                                    &conf,
+                                    &mut socket,
+                                    &settings.verbosity,
+                                    &thread_logs,
+                                );
                                 break 'thread;
                             }
+                            menu::builder::MenuType::Exit => {}
                             menu::builder::MenuType::Silent => {
-                                silent = !silent;
+                                settings.verbosity =
+                                    if matches!(settings.verbosity, Verbosity::Diagnostic) {
+                                        Verbosity::Minimal
+                                    } else {
+                                        Verbosity::Diagnostic
+                                    }
                             }
                             menu::builder::MenuType::Dial => {
-                                print_msg("outbound_configure".to_string(), true, &thread_logs);
-                                flow = Direction::Outbound;
+                                settings.flow = Direction::Outbound;
                                 outbound_configure(&conf, &ip, &argument.clone(), &dialog_state);
                                 outbound_start(
                                     &mut socket,
                                     &conf,
                                     &dialog_state,
-                                    silent,
+                                    &settings.verbosity,
                                     &thread_logs,
                                 );
                             }

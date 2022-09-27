@@ -47,7 +47,8 @@ pub fn menu_and_refresh<B: Backend>(
                                 }
                                 MenuType::Exit => {
                                     log::slog("Terminating", logs);
-                                    thread::sleep(Duration::from_millis(300));
+                                    tx.send("u".to_string()).unwrap();
+                                    thread::sleep(Duration::from_millis(500));
                                     return Ok(());
                                 }
                                 MenuType::Silent => {
@@ -59,6 +60,7 @@ pub fn menu_and_refresh<B: Backend>(
                                 MenuType::Answer => {
                                     todo!();
                                 }
+                                MenuType::Unregister => {}
                             }
                         }
                         None => log::slog("Invalid Command", logs),
