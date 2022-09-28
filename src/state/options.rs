@@ -28,7 +28,6 @@ pub struct SelfConfiguration<'a> {
 }
 
 pub enum Verbosity {
-    Detailed,
     Diagnostic,
     Minimal,
     Normal,

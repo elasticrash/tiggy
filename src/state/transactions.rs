@@ -7,7 +7,6 @@ pub struct Transaction {
     pub tr_type: TransactionType,
     pub local: Option<SipMessage>,
     pub remote: Option<SipMessage>,
-    pub send: u16,
     pub object: SipOptions,
 }
 

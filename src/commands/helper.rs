@@ -24,17 +24,15 @@ pub fn get_via(ip: &str, port: &str) -> rsip::Header {
             host_with_port: (rsip::Domain::from(format!("{}:{}", ip, port))).into(),
             ..Default::default()
         },
-        params: vec![rsip::Param::Branch(rsip::param::Branch::new(
-            format!(
-                "z9hG4bK{}{}{}{}{}{}",
-                now.month(),
-                now.day(),
-                now.hour(),
-                now.minute(),
-                now.second(),
-                now.timestamp_millis()
-            ),
-        ))],
+        params: vec![rsip::Param::Branch(rsip::param::Branch::new(format!(
+            "z9hG4bK{}{}{}{}{}{}",
+            now.month(),
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second(),
+            now.timestamp_millis()
+        )))],
     }
     .into()
 }

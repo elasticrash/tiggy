@@ -77,10 +77,9 @@ pub fn outbound_configure(
             let mut transactions = dg.transactions.get_transactions().unwrap();
             let mut transaction = Transaction {
                 object: invite.clone(),
-                local: Some(invite.set_initial_register()),
+                local: Some(invite.set_initial_invite()),
                 remote: None,
-                send: 0,
-                tr_type: TransactionType::Typical,
+                tr_type: TransactionType::Invite,
             };
             transaction.object.msg = Some(transaction.object.clone().set_initial_invite());
             transactions.push(transaction);
@@ -104,11 +103,15 @@ pub fn outbound_start(
 
     for dg in dialogs.iter_mut().rev() {
         if matches!(dg.diag_type, Direction::Outbound) {
-            let mut tr = dg.transactions.get_transactions().unwrap();
+            let mut transactions = dg.transactions.get_transactions().unwrap();
 
-            print_msg(format!("number of transactions {}: ", tr.len()), vrb, logs);
+            print_msg(
+                format!("number of transactions {}: ", transactions.len()),
+                vrb,
+                logs,
+            );
 
-            let mut transaction = tr.last_mut().unwrap();
+            let mut transaction = transactions.last_mut().unwrap();
             transaction.local = transaction.object.set_initial_invite().into();
 
             send(
@@ -222,12 +225,11 @@ pub fn process_response_outbound(
             .unwrap();
             for dg in dialogs.iter_mut().rev() {
                 if matches!(dg.diag_type, Direction::Outbound) {
-                    let mut tr = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = tr.last_mut().unwrap();
+                    let mut transactions = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = transactions.last_mut().unwrap();
                     transaction.object.nonce = Some(auth.nonce);
                     transaction.object.set_auth(conf, "INVITE");
                     transaction.object.msg = Some(transaction.local.clone().unwrap());
-                    transaction.send = 1;
 
                     send(
                         &SocketV4 {
@@ -246,8 +248,8 @@ pub fn process_response_outbound(
         StatusCode::Ringing => {
             for dg in dialogs.iter_mut().rev() {
                 if matches!(dg.diag_type, Direction::Outbound) {
-                    let mut tr = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = tr.last_mut().unwrap();
+                    let mut transactions = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = transactions.last_mut().unwrap();
                     transaction.remote = Some(SipMessage::Response(response.clone()));
                     break;
                 }
@@ -258,8 +260,8 @@ pub fn process_response_outbound(
         StatusCode::OK => {
             for dg in dialogs.iter_mut().rev() {
                 if matches!(dg.diag_type, Direction::Outbound) {
-                    let mut tr = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = tr.last_mut().unwrap();
+                    let mut transactions = dg.transactions.get_transactions().unwrap();
+                    let transaction = transactions.last().unwrap();
                     if transaction.local.is_some() && transaction.remote.is_some() {
                         let hstr = response.clone().to_header().unwrap().to_string();
                         let remote_tag = get_remote_tag(&hstr);
@@ -289,25 +291,39 @@ pub fn process_response_outbound(
                             nonce: None,
                         };
 
-                        transaction.send += 1;
-
                         let via_from_invite =
                             transaction.local.as_ref().unwrap().via_header().unwrap();
                         let cseq_count = transaction.local.as_ref().unwrap().cseq_header().unwrap();
                         let contact = response.contact_header().unwrap();
+
+                        let mut ack_transaction = Transaction {
+                            object: ack.clone(),
+                            local: Some(ack.create_ack(
+                                via_from_invite,
+                                response.headers.get_record_route_header_array().clone(),
+                                contact,
+                                cseq_count,
+                            )),
+                            remote: None,
+                            tr_type: TransactionType::Ack,
+                        };
+
+                        ack_transaction.object.msg =
+                            Some(ack_transaction.object.create_ack(
+                                via_from_invite,
+                                response.headers.get_record_route_header_array().clone(),
+                                contact,
+                                cseq_count,
+                            ));
+
+                        transactions.push(ack_transaction.clone());
 
                         send(
                             &SocketV4 {
                                 ip: conf.clone().sip_server,
                                 port: conf.clone().sip_port,
                             },
-                            ack.create_ack(
-                                via_from_invite,
-                                response.headers.get_record_route_header_array().clone(),
-                                contact,
-                                cseq_count,
-                            )
-                            .to_string(),
+                            ack_transaction.local.as_ref().unwrap().to_string(),
                             socket,
                             &settings.verbosity,
                             logs,

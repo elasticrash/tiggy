@@ -61,6 +61,7 @@ pub fn menu_and_refresh<B: Backend>(
                                     todo!();
                                 }
                                 MenuType::Unregister => {}
+                                MenuType::Quiet => tx.send(key_value.to_string()).unwrap(),
                             }
                         }
                         None => log::slog("Invalid Command", logs),

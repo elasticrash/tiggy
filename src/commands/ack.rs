@@ -82,10 +82,7 @@ impl SipOptions {
             method: rsip::Method::Ack,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
-                host_with_port: rsip::Domain::from(
-                    rem_last(contact_value).to_string(),
-                )
-                .into(),
+                host_with_port: rsip::Domain::from(rem_last(contact_value).to_string()).into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,

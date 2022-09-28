@@ -43,7 +43,6 @@ pub fn print_msg(msg: String, vrb: &Verbosity, logs: &Arc<Mutex<VecDeque<String>
     let mut arr = logs.lock().unwrap();
 
     match vrb {
-        Verbosity::Detailed => {}
         Verbosity::Diagnostic => {
             for line in print.clone() {
                 arr.push_back(format!(

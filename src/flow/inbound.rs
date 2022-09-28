@@ -150,8 +150,8 @@ pub fn process_response_inbound(
 
             for dg in dialogs.iter_mut() {
                 if matches!(dg.diag_type, Direction::Inbound) {
-                    let mut tr = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = tr.last_mut().unwrap();
+                    let mut transactions = dg.transactions.get_transactions().unwrap();
+                    let mut transaction = transactions.last_mut().unwrap();
                     transaction.object.nonce = Some(auth.nonce);
                     transaction.object.set_auth(conf, "REGISTER");
                     transaction.object.msg = transaction.local.clone();

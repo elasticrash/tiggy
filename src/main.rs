@@ -216,6 +216,7 @@ fn main() -> Result<(), io::Error> {
                                         Verbosity::Diagnostic
                                     }
                             }
+                            menu::builder::MenuType::Quiet => settings.verbosity = Verbosity::Quiet,
                             menu::builder::MenuType::Dial => {
                                 settings.flow = Direction::Outbound;
                                 outbound_configure(&conf, &ip, &argument.clone(), &dialog_state);

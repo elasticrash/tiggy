@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    net::{UdpSocket},
+    net::UdpSocket,
     sync::{Arc, Mutex},
 };
 
@@ -11,7 +11,7 @@ use crate::{
     config::JSONConfiguration,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
-        options::{SipOptions, Verbosity, SelfConfiguration},
+        options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
     transmissions::sockets::{send, SocketV4},
@@ -70,7 +70,6 @@ pub fn register_ua(
                 object: register.clone(),
                 local: Some(register.set_initial_register()),
                 remote: None,
-                send: 0,
                 tr_type: TransactionType::Typical,
             });
 
@@ -101,8 +100,8 @@ pub fn unregister_ua(
     let mut dialogs = locked_state.get_dialogs().unwrap();
 
     for dg in dialogs.iter_mut() {
-        let mut tr = dg.transactions.get_transactions().unwrap();
-        let transaction = tr.first_mut().unwrap();
+        let mut transactions = dg.transactions.get_transactions().unwrap();
+        let transaction = transactions.first_mut().unwrap();
         let unregister = transaction.object.unregister();
 
         send(

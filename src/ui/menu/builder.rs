@@ -8,6 +8,7 @@ pub enum MenuType {
     Dial,
     Answer,
     Unregister,
+    Quiet,
 }
 
 #[derive(Clone, Debug)]
@@ -41,6 +42,10 @@ pub fn build_menu() -> Vec<MenuItem> {
         MenuItem {
             category: MenuType::Answer,
             value: KeyCode::Char('a'),
+        },
+        MenuItem {
+            category: MenuType::Quiet,
+            value: KeyCode::Char('q'),
         },
     ];
     menu
