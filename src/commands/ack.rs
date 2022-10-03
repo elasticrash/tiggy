@@ -100,3 +100,14 @@ fn rem_last(value: &str) -> &str {
     chars.next_back();
     chars.as_str()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::ack::rem_last;
+
+    #[test]
+    fn remove_last() {
+        let test_value = "test1";
+        assert_eq!("test", rem_last(test_value));
+    }
+}

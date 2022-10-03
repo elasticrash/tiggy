@@ -1,8 +1,4 @@
-use std::{
-    collections::VecDeque,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::time::Duration;
 
 use tui::{
     backend::Backend,
@@ -13,7 +9,7 @@ use tui::{
     Frame,
 };
 
-use crate::log::print_menu;
+use crate::log::{print_menu, MTLogs};
 
 pub struct App {
     pub input: String,
@@ -36,7 +32,7 @@ pub enum InputMode {
     Editing,
 }
 
-pub fn ui<B: Backend>(f: &mut Frame<B>, app: &App, logs: &Arc<Mutex<VecDeque<String>>>) {
+pub fn ui<B: Backend>(f: &mut Frame<B>, app: &App, logs: &MTLogs) {
     let main = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())

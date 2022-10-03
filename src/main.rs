@@ -32,7 +32,7 @@ use crossterm::terminal::{
 use flow::outbound::{
     outbound_configure, outbound_start, process_request_outbound, process_response_outbound,
 };
-use log::print_msg;
+use log::{print_msg, MTLogs};
 use state::dialogs::{Dialogs, Direction};
 use std::net::UdpSocket;
 use tui::backend::CrosstermBackend;
@@ -53,8 +53,8 @@ macro_rules! skip_fail {
 }
 
 fn main() -> Result<(), io::Error> {
-    let logs = Arc::new(Mutex::from(VecDeque::new()));
-    let thread_logs = Arc::clone(&logs);
+    let logs: MTLogs = Arc::new(Mutex::from(VecDeque::new()));
+    let thread_logs: MTLogs = Arc::clone(&logs);
 
     let conf = config::read("./config.json").unwrap();
     let is_there_an_ipv4 = if_addrs::get_if_addrs().unwrap().into_iter().find(|ip| {

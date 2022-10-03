@@ -1,11 +1,9 @@
-use crate::{log::print_msg, state::options::Verbosity};
-use rsip::SipMessage;
-use std::{
-    collections::VecDeque,
-    convert::TryFrom,
-    net::UdpSocket,
-    sync::{Arc, Mutex},
+use crate::{
+    log::{print_msg, MTLogs},
+    state::options::Verbosity,
 };
+use rsip::SipMessage;
+use std::{convert::TryFrom, net::UdpSocket};
 
 pub struct SocketV4 {
     pub ip: String,
@@ -14,10 +12,10 @@ pub struct SocketV4 {
 
 pub fn send(
     s_conf: &SocketV4,
-    msg: String,
     socket: &mut UdpSocket,
+    msg: String,
     vrb: &Verbosity,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) {
     print_msg("===>".to_string(), vrb, logs);
     print_msg(msg.clone(), vrb, logs);
@@ -31,7 +29,7 @@ pub fn receive(
     socket: &mut UdpSocket,
     buffer: &mut [u8; 65535],
     vrb: &Verbosity,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) -> Result<SipMessage, rsip::Error> {
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];

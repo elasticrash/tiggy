@@ -1,5 +1,4 @@
 use std::{
-    collections::VecDeque,
     net::UdpSocket,
     sync::{Arc, Mutex},
 };
@@ -14,7 +13,7 @@ use crate::{
         options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::{send, SocketV4},
+    transmissions::sockets::{send, SocketV4}, log::MTLogs,
 };
 
 /// preparation for registering the UA,
@@ -24,7 +23,7 @@ pub fn register_ua(
     conf: &JSONConfiguration,
     socket: &mut UdpSocket,
     settings: &mut SelfConfiguration,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) {
     let mut locked_state = dialog_state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
@@ -80,8 +79,8 @@ pub fn register_ua(
                     ip: conf.clone().sip_server,
                     port: conf.clone().sip_port,
                 },
-                transaction.local.as_ref().unwrap().to_string(),
                 socket,
+                transaction.local.as_ref().unwrap().to_string(),
                 &settings.verbosity,
                 logs,
             );
@@ -94,7 +93,7 @@ pub fn unregister_ua(
     conf: &JSONConfiguration,
     socket: &mut UdpSocket,
     vrb: &Verbosity,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) {
     let mut locked_state = dialog_state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
@@ -109,8 +108,8 @@ pub fn unregister_ua(
                 ip: conf.clone().sip_server,
                 port: conf.clone().sip_port,
             },
-            unregister.to_string(),
             socket,
+            unregister.to_string(),
             vrb,
             logs,
         );

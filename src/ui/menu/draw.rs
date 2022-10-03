@@ -1,7 +1,6 @@
 use std::{
-    collections::VecDeque,
     io,
-    sync::{mpsc::Sender, Arc, Mutex},
+    sync::{mpsc::Sender, Arc},
     thread,
     time::{Duration, Instant},
 };
@@ -10,7 +9,7 @@ use crossterm::event::{self, Event, KeyCode};
 use tui::{backend::Backend, Terminal};
 
 use crate::{
-    log,
+    log::{self, MTLogs},
     ui::app::{ui, App, InputMode},
 };
 
@@ -19,7 +18,7 @@ use super::builder::{build_menu, MenuType};
 pub fn menu_and_refresh<B: Backend>(
     terminal: &mut Terminal<B>,
     tx: &Sender<String>,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
     mut app: App,
 ) -> io::Result<()> {
     let cmd_menu = Arc::new(build_menu());

@@ -2,7 +2,7 @@ use crate::{
     commands::{helper::get_remote_tag, ok::ok},
     composer::{communication::Auth, header_extension::CustomHeaderExtension},
     config::JSONConfiguration,
-    log::{self, print_msg},
+    log::{print_msg, MTLogs},
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::{SelfConfiguration, SipOptions, Verbosity},
@@ -20,7 +20,6 @@ use rsip::{
     Header, Method, Request, Response, SipMessage, StatusCode,
 };
 use std::{
-    collections::VecDeque,
     convert::TryFrom,
     net::{IpAddr, UdpSocket},
     sync::{Arc, Mutex},
@@ -94,7 +93,7 @@ pub fn outbound_start(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     vrb: &Verbosity,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) {
     let mut locked_state = state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
@@ -119,8 +118,8 @@ pub fn outbound_start(
                     ip: conf.clone().sip_server,
                     port: conf.clone().sip_port,
                 },
-                transaction.local.clone().unwrap().to_string(),
                 socket,
+                transaction.local.clone().unwrap().to_string(),
                 vrb,
                 logs,
             );
@@ -135,14 +134,9 @@ pub fn process_request_outbound(
     conf: &JSONConfiguration,
     _state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) {
     let via: Via = request.via_header().unwrap().typed().unwrap();
-
-    log::slog(
-        format!("received outbound request, {}", request.method).as_str(),
-        logs,
-    );
 
     match request.method {
         Method::Ack => todo!(),
@@ -153,6 +147,7 @@ pub fn process_request_outbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
+                socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -161,7 +156,6 @@ pub fn process_request_outbound(
                     false,
                 )
                 .to_string(),
-                socket,
                 &settings.verbosity,
                 logs,
             );
@@ -177,6 +171,7 @@ pub fn process_request_outbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
+                socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -185,7 +180,6 @@ pub fn process_request_outbound(
                     false,
                 )
                 .to_string(),
-                socket,
                 &settings.verbosity,
                 logs,
             );
@@ -204,15 +198,10 @@ pub fn process_response_outbound(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) {
     let mut locked_state = state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
-
-    log::slog(
-        format!("received outbound response, {}", response.status_code).as_str(),
-        logs,
-    );
 
     match response.status_code {
         StatusCode::Trying => {}
@@ -236,8 +225,8 @@ pub fn process_response_outbound(
                             ip: conf.clone().sip_server,
                             port: conf.clone().sip_port,
                         },
-                        transaction.object.push_auth_to_invite().to_string(),
                         socket,
+                        transaction.object.push_auth_to_invite().to_string(),
                         &settings.verbosity,
                         logs,
                     );
@@ -308,13 +297,12 @@ pub fn process_response_outbound(
                             tr_type: TransactionType::Ack,
                         };
 
-                        ack_transaction.object.msg =
-                            Some(ack_transaction.object.create_ack(
-                                via_from_invite,
-                                response.headers.get_record_route_header_array().clone(),
-                                contact,
-                                cseq_count,
-                            ));
+                        ack_transaction.object.msg = Some(ack_transaction.object.create_ack(
+                            via_from_invite,
+                            response.headers.get_record_route_header_array().clone(),
+                            contact,
+                            cseq_count,
+                        ));
 
                         transactions.push(ack_transaction.clone());
 
@@ -323,8 +311,8 @@ pub fn process_response_outbound(
                                 ip: conf.clone().sip_server,
                                 port: conf.clone().sip_port,
                             },
-                            ack_transaction.local.as_ref().unwrap().to_string(),
                             socket,
+                            ack_transaction.local.as_ref().unwrap().to_string(),
                             &settings.verbosity,
                             logs,
                         );

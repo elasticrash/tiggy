@@ -2,12 +2,12 @@ use crate::{
     commands::{ok::ok, trying::trying},
     composer::communication::Auth,
     config::JSONConfiguration,
-    log,
     state::{
         dialogs::{Dialogs, Direction},
         options::SelfConfiguration,
     },
     transmissions::sockets::{send, SocketV4},
+    MTLogs,
 };
 use rsip::{
     header_opt,
@@ -18,7 +18,6 @@ use rsip::{
     Header, Request, Response, StatusCode,
 };
 use std::{
-    collections::VecDeque,
     convert::TryFrom,
     net::UdpSocket,
     sync::{Arc, Mutex},
@@ -31,14 +30,9 @@ pub fn process_request_inbound(
     socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     settings: &mut SelfConfiguration,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) {
     let via: Via = request.via_header().unwrap().typed().unwrap();
-
-    log::slog(
-        format!("received inbound request, {}", request.method).as_str(),
-        logs,
-    );
 
     match request.method {
         rsip::Method::Register => {}
@@ -49,6 +43,7 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
+                socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -57,7 +52,6 @@ pub fn process_request_inbound(
                     false,
                 )
                 .to_string(),
-                socket,
                 &settings.verbosity,
                 logs,
             );
@@ -70,8 +64,8 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                trying(conf, &settings.ip.clone().to_string(), request).to_string(),
                 socket,
+                trying(conf, &settings.ip.clone().to_string(), request).to_string(),
                 &settings.verbosity,
                 logs,
             );
@@ -81,6 +75,7 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
+                socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -89,7 +84,6 @@ pub fn process_request_inbound(
                     true,
                 )
                 .to_string(),
-                socket,
                 &settings.verbosity,
                 logs,
             );
@@ -102,6 +96,7 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
+                socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -110,7 +105,6 @@ pub fn process_request_inbound(
                     false,
                 )
                 .to_string(),
-                socket,
                 &settings.verbosity,
                 logs,
             );
@@ -129,15 +123,10 @@ pub fn process_response_inbound(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
-    logs: &Arc<Mutex<VecDeque<String>>>,
+    logs: &MTLogs,
 ) {
     let mut locked_state = state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
-
-    log::slog(
-        format!("received inbound response, {}", response.status_code).as_str(),
-        logs,
-    );
 
     match response.status_code {
         StatusCode::Unauthorized => {
@@ -161,8 +150,8 @@ pub fn process_response_inbound(
                             ip: conf.clone().sip_server,
                             port: conf.clone().sip_port,
                         },
-                        transaction.object.push_auth_to_register().to_string(),
                         socket,
+                        transaction.object.push_auth_to_register().to_string(),
                         &settings.verbosity,
                         logs,
                     );

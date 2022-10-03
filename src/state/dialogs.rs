@@ -70,12 +70,6 @@ impl Dialogs {
     pub fn get_dialogs(&mut self) -> Result<MutexGuard<Vec<Dialog>>, DialogsLockError> {
         Ok(self.state.lock()?)
     }
-
-    pub fn patch(&mut self, patch: impl Fn(&mut Vec<Dialog>)) -> Result<(), DialogsLockError> {
-        let mut guard = self.state.lock()?;
-        patch(&mut guard);
-        Ok(())
-    }
 }
 
 pub struct Transactions {
@@ -112,14 +106,5 @@ impl Transactions {
         &mut self,
     ) -> Result<MutexGuard<Vec<Transaction>>, TransactionsLockError> {
         Ok(self.state.lock()?)
-    }
-
-    pub fn patch(
-        &mut self,
-        patch: impl Fn(&mut Vec<Transaction>),
-    ) -> Result<(), TransactionsLockError> {
-        let mut guard = self.state.lock()?;
-        patch(&mut guard);
-        Ok(())
     }
 }
