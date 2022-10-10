@@ -1,15 +1,27 @@
 extern crate md5;
 extern crate rand;
+/// Composes SIP Messages
 mod commands;
+/// Extentions on rsip
 mod composer;
+/// Loads configuration
 mod config;
+/// Call Flows
 mod flow;
+/// Logging
 mod log;
+/// Gets IP information
+mod network;
+/// Actions that need to happen when the UA starts
 mod startup;
+/// SIP State
 mod state;
+/// Upd
 mod transmissions;
+/// Terminal UI
 mod ui;
 
+use network::get_ipv4;
 use startup::registration::{register_ua, unregister_ua};
 use state::options::{SelfConfiguration, Verbosity};
 use std::collections::VecDeque;
@@ -32,7 +44,7 @@ use crossterm::terminal::{
 use flow::outbound::{
     outbound_configure, outbound_start, process_request_outbound, process_response_outbound,
 };
-use log::{print_msg, MTLogs};
+use log::MTLogs;
 use state::dialogs::{Dialogs, Direction};
 use std::net::UdpSocket;
 use tui::backend::CrosstermBackend;
@@ -57,21 +69,13 @@ fn main() -> Result<(), io::Error> {
     let thread_logs: MTLogs = Arc::clone(&logs);
 
     let conf = config::read("./config.json").unwrap();
-    let is_there_an_ipv4 = if_addrs::get_if_addrs().unwrap().into_iter().find(|ip| {
-        print_msg(
-            format!("available interface:, {}", ip.addr.ip()),
-            &Verbosity::Normal,
-            &logs,
-        );
-        ip.ip().is_ipv4()
-    });
 
-    let ip = match is_there_an_ipv4 {
-        Some(ipv4) => ipv4,
-        None => panic!("could not find an ipv4 interface"),
-    }
-    .addr
-    .ip();
+    let ip = match get_ipv4() {
+        Ok(ipv4) => ipv4,
+        Err(why) => panic!("{}", why),
+    };
+
+    log::slog(&format!("IP found {} :", ip), &logs);
 
     let (tx, rx) = mpsc::channel();
 

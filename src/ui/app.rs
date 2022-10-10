@@ -9,7 +9,9 @@ use tui::{
     Frame,
 };
 
-use crate::log::{print_menu, MTLogs};
+use crate::log::MTLogs;
+
+use super::menu::builder::print_menu;
 
 pub struct App {
     pub input: String,

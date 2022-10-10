@@ -13,7 +13,7 @@ use crate::{
     ui::app::{ui, App, InputMode},
 };
 
-use super::builder::{build_menu, MenuType};
+use super::builder::{build_menu, print_menu, MenuType};
 
 pub fn menu_and_refresh<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -42,7 +42,7 @@ pub fn menu_and_refresh<B: Backend>(
 
                             match item.category {
                                 MenuType::DisplayMenu => {
-                                    log::print_menu();
+                                    print_menu();
                                 }
                                 MenuType::Exit => {
                                     log::slog("Terminating", logs);

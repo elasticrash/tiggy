@@ -1,6 +1,6 @@
 use crate::{
-    commands::{helper::get_remote_tag, ok::ok},
-    composer::{communication::Auth, header_extension::CustomHeaderExtension},
+    commands::{auth::Auth, helper::get_remote_tag, ok::ok},
+    composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
     log::{print_msg, MTLogs},
     state::{

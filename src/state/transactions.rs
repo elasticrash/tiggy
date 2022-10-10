@@ -1,7 +1,7 @@
+use super::options::SipOptions;
 use rsip::SipMessage;
 
-use super::options::SipOptions;
-
+/// SIP transaction model
 #[derive(Clone)]
 pub struct Transaction {
     pub tr_type: TransactionType,

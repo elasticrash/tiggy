@@ -1,8 +1,7 @@
 use std::net::IpAddr;
 
-use rsip::SipMessage;
-
 use super::dialogs::Direction;
+use rsip::SipMessage;
 
 #[derive(Clone)]
 pub struct SipOptions {
@@ -30,6 +29,5 @@ pub struct SelfConfiguration<'a> {
 pub enum Verbosity {
     Diagnostic,
     Minimal,
-    Normal,
     Quiet,
 }

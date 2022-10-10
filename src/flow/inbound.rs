@@ -1,6 +1,5 @@
 use crate::{
-    commands::{ok::ok, trying::trying},
-    composer::communication::Auth,
+    commands::{auth::Auth, ok::ok, trying::trying},
     config::JSONConfiguration,
     state::{
         dialogs::{Dialogs, Direction},

@@ -1,13 +1,12 @@
+use super::transactions::Transaction;
+use chrono::prelude::*;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
-use chrono::prelude::*;
-
-use super::transactions::Transaction;
-
+/// SIP dialog
 pub struct Dialog {
     pub diag_type: Direction,
     pub call_id: String,
@@ -31,6 +30,7 @@ impl Display for Direction {
     }
 }
 
+/// Collection of Dialogs
 pub struct Dialogs {
     pub state: Arc<Mutex<Vec<Dialog>>>,
 }
@@ -72,6 +72,7 @@ impl Dialogs {
     }
 }
 
+/// Collection of Transactions
 pub struct Transactions {
     pub state: Arc<Mutex<Vec<Transaction>>>,
 }

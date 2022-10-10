@@ -6,34 +6,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use tui::{
-    style::Style,
-    text::{Span, Spans},
-};
-
 use crate::state::options::Verbosity;
 
 pub type MTLogs = Arc<Mutex<VecDeque<String>>>;
 
+/// Pushes log into a vector
 pub fn slog(log: &str, logs: &MTLogs) {
     let mut arr = logs.lock().unwrap();
     arr.push_back(format!("{:?}", log));
 }
 
-pub fn print_menu() -> Vec<Spans<'static>> {
-    vec![
-        { Spans::from(Span::styled("s. Toggle Silent mode", Style::default())) },
-        {
-            Spans::from(Span::styled(
-                "d. Dial Number & (enter to sumbit)",
-                Style::default(),
-            ))
-        },
-        { Spans::from(Span::styled("   or (esc to cancel)", Style::default())) },
-        { Spans::from(Span::styled("x. Exit", Style::default())) },
-    ]
-}
-
+/// Logs a Message on the console UI based on verbosity Level
 pub fn print_msg(msg: String, vrb: &Verbosity, logs: &MTLogs) {
     let print: Vec<&str> = msg.split("\r\n").collect();
     let mut arr = logs.lock().unwrap();
@@ -45,13 +28,15 @@ pub fn print_msg(msg: String, vrb: &Verbosity, logs: &MTLogs) {
             }
         }
         Verbosity::Minimal => arr.push_back(format!("{:?}", print[0])),
-        Verbosity::Normal => {}
         Verbosity::Quiet => {}
     }
     // logs to file
     flog(&print);
 }
 
+/// Logs to a file in detail, easier to see what's going on, the logs on the UI
+/// are basically a gimmick, give or take, this should be opt in, though in the
+/// future
 pub fn flog(print: &Vec<&str>) {
     if !Path::new("log.txt").exists() {
         File::create("log.txt").unwrap();

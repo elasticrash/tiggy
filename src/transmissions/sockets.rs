@@ -5,11 +5,13 @@ use crate::{
 use rsip::SipMessage;
 use std::{convert::TryFrom, net::UdpSocket};
 
+/// Bundle Ip and Port for Upd connections into a signle struct
 pub struct SocketV4 {
     pub ip: String,
     pub port: u16,
 }
 
+/// Sends a udp message
 pub fn send(
     s_conf: &SocketV4,
     socket: &mut UdpSocket,
@@ -25,6 +27,9 @@ pub fn send(
         .unwrap();
 }
 
+/// Receives a message through upd
+/// Returns a SIPMessage type
+/// * TODO: Think about returning something more generic (i.e. String)
 pub fn receive(
     socket: &mut UdpSocket,
     buffer: &mut [u8; 65535],
@@ -40,6 +45,8 @@ pub fn receive(
     SipMessage::try_from(r_message_a.to_string())
 }
 
+/// Take a look on socket whether a message is available without picking it up
+/// Returns number of messages awaiting to be received
 pub fn peek(socket: &mut UdpSocket, buffer: &mut [u8]) -> usize {
     match socket.peek(buffer) {
         Ok(received) => received,

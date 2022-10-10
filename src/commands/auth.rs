@@ -1,4 +1,8 @@
-use crate::{composer::communication::Auth, config::JSONConfiguration, state::options::SipOptions};
+use crate::{config::JSONConfiguration, state::options::SipOptions};
+
+pub trait Auth {
+    fn set_auth(&mut self, conf: &JSONConfiguration, method: &str);
+}
 
 impl Auth for SipOptions {
     fn set_auth(&mut self, conf: &JSONConfiguration, method: &str) {

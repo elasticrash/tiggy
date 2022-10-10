@@ -8,15 +8,16 @@ use uuid::Uuid;
 
 use crate::{
     config::JSONConfiguration,
+    log::MTLogs,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::{send, SocketV4}, log::MTLogs,
+    transmissions::sockets::{send, SocketV4},
 };
 
-/// preparation for registering the UA,
+/// Preparation for registering the UA,
 /// as well as sending the first unauthorized message
 pub fn register_ua(
     dialog_state: &Arc<Mutex<Dialogs>>,
@@ -88,6 +89,7 @@ pub fn register_ua(
     }
 }
 
+/// Sends the registration again with Expires 0
 pub fn unregister_ua(
     dialog_state: &Arc<Mutex<Dialogs>>,
     conf: &JSONConfiguration,

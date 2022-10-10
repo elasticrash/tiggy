@@ -59,6 +59,7 @@ impl SipOptions {
 
         request
     }
+
     pub fn unregister(&self) -> SipMessage {
         let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
         headers.push(rsip::headers::Expires::from(0).into());
