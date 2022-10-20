@@ -3,9 +3,9 @@ use chrono::prelude::*;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
+    net::UdpSocket,
     sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
-
 /// SIP dialog
 pub struct Dialog {
     pub diag_type: Direction,
@@ -33,6 +33,7 @@ impl Display for Direction {
 /// Collection of Dialogs
 pub struct Dialogs {
     pub state: Arc<Mutex<Vec<Dialog>>>,
+    pub socket: Arc<Mutex<UdpSocket>>,
 }
 
 impl Display for Dialog {
@@ -61,14 +62,21 @@ impl<T> From<PoisonError<T>> for DialogsLockError {
 }
 
 impl Dialogs {
-    pub fn new() -> Dialogs {
+    pub fn new(port: i32) -> Dialogs {
         Dialogs {
             state: Arc::new(Mutex::new(vec![])),
+            socket: Arc::new(Mutex::new(
+                UdpSocket::bind(format!("0.0.0.0:{}", port)).unwrap(),
+            )),
         }
     }
 
     pub fn get_dialogs(&mut self) -> Result<MutexGuard<Vec<Dialog>>, DialogsLockError> {
         Ok(self.state.lock()?)
+    }
+
+    pub fn get_socket(&mut self) -> Result<MutexGuard<UdpSocket>, DialogsLockError> {
+        Ok(self.socket.lock()?)
     }
 }
 

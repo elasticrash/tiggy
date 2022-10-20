@@ -22,6 +22,7 @@ mod transmissions;
 mod ui;
 
 use network::get_ipv4;
+use rsip::SipMessage;
 use startup::registration::{register_ua, unregister_ua};
 use state::options::{SelfConfiguration, Verbosity};
 use std::collections::VecDeque;
@@ -46,23 +47,10 @@ use flow::outbound::{
 };
 use log::MTLogs;
 use state::dialogs::{Dialogs, Direction};
-use std::net::UdpSocket;
 use tui::backend::CrosstermBackend;
 use tui::widgets::{Block, Borders};
 use tui::Terminal;
 use ui::app::App;
-
-macro_rules! skip_fail {
-    ($res:expr) => {
-        match $res {
-            Ok(val) => val,
-            Err(e) => {
-                println!("[{}] - {}", line!(), e);
-                continue;
-            }
-        }
-    };
-}
 
 fn main() -> Result<(), io::Error> {
     let logs: MTLogs = Arc::new(Mutex::from(VecDeque::new()));
@@ -109,47 +97,53 @@ fn main() -> Result<(), io::Error> {
             };
 
             let mut buffer = [0_u8; 65535];
+            let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new(5060)));
+            {
+                let mut locked_state = dialog_state.lock().unwrap();
+                let socket = locked_state.get_socket().unwrap();
+                let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
 
-            let mut socket = UdpSocket::bind("0.0.0.0:5060").unwrap();
-            let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
-
-            socket
-                .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
-                .expect("connect function failed");
-
-            let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new()));
-
-            register_ua(
-                &dialog_state,
-                &conf,
-                &mut socket,
-                &mut settings,
-                &thread_logs,
-            );
+                socket
+                    .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
+                    .expect("connect function failed");
+            }
+            register_ua(&dialog_state, &conf, &mut settings, &thread_logs);
 
             'thread: loop {
-                let packets_queued = peek(&mut socket, &mut buffer);
+                let mut maybe_msg: Option<SipMessage> = None;
+                {
+                    let mut locked_state = dialog_state.lock().unwrap();
+                    let mut socket = locked_state.get_socket().unwrap();
 
-                if packets_queued > 0 {
-                    let msg = skip_fail!(receive(
-                        &mut socket,
-                        &mut buffer,
-                        &settings.verbosity,
-                        &thread_logs
-                    ));
+                    let packets_queued = peek(&mut socket, &mut buffer);
 
+                    //flog(&vec![&format!("packets queued {}", packets_queued)]);
+                    if packets_queued > 0 {
+                        maybe_msg = match receive(
+                            &mut socket,
+                            &mut buffer,
+                            &settings.verbosity,
+                            &thread_logs,
+                        ) {
+                            Ok(buf) => Some(buf),
+                            Err(_) => None,
+                        };
+                    }
+                }
+
+                if maybe_msg.is_some() {
+                    let msg = maybe_msg.unwrap();
                     match settings.flow {
                         Direction::Inbound => match msg {
                             rsip::SipMessage::Request(request) => process_request_inbound(
                                 &request,
-                                &mut socket,
                                 &conf,
+                                &dialog_state,
                                 &mut settings,
                                 &thread_logs,
                             ),
                             rsip::SipMessage::Response(response) => process_response_inbound(
                                 &response,
-                                &mut socket,
                                 &conf,
                                 &dialog_state,
                                 &mut settings,
@@ -159,7 +153,6 @@ fn main() -> Result<(), io::Error> {
                         Direction::Outbound => match msg {
                             rsip::SipMessage::Request(request) => process_request_outbound(
                                 &request,
-                                &mut socket,
                                 &conf,
                                 &dialog_state,
                                 &mut settings,
@@ -167,7 +160,6 @@ fn main() -> Result<(), io::Error> {
                             ),
                             rsip::SipMessage::Response(response) => process_response_outbound(
                                 &response,
-                                &mut socket,
                                 &conf,
                                 &dialog_state,
                                 &mut settings,
@@ -205,7 +197,6 @@ fn main() -> Result<(), io::Error> {
                                 unregister_ua(
                                     &dialog_state,
                                     &conf,
-                                    &mut socket,
                                     &settings.verbosity,
                                     &thread_logs,
                                 );
@@ -225,7 +216,6 @@ fn main() -> Result<(), io::Error> {
                                 settings.flow = Direction::Outbound;
                                 outbound_configure(&conf, &ip, &argument.clone(), &dialog_state);
                                 outbound_start(
-                                    &mut socket,
                                     &conf,
                                     &dialog_state,
                                     &settings.verbosity,

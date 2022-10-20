@@ -21,7 +21,7 @@ use rsip::{
 };
 use std::{
     convert::TryFrom,
-    net::{IpAddr, UdpSocket},
+    net::IpAddr,
     sync::{Arc, Mutex},
 };
 use uuid::Uuid;
@@ -89,53 +89,64 @@ pub fn outbound_configure(
 /// Sends the Intial invite for an outbound call
 // TODO pass identifier for the call
 pub fn outbound_start(
-    socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     vrb: &Verbosity,
     logs: &MTLogs,
 ) {
-    let mut locked_state = state.lock().unwrap();
-    let mut dialogs = locked_state.get_dialogs().unwrap();
+    let mut transaction: Option<String> = None;
+    {
+        let state: Arc<Mutex<Dialogs>> = state.clone();
+        let mut locked_state = state.lock().unwrap();
+        let mut dialogs = locked_state.get_dialogs().unwrap();
+        print_msg(format!("number of dialogs {}: ", dialogs.len()), vrb, logs);
 
-    print_msg(format!("number of dialogs {}: ", dialogs.len()), vrb, logs);
+        for dg in dialogs.iter_mut().rev() {
+            if matches!(dg.diag_type, Direction::Outbound) {
+                let mut transactions = dg.transactions.get_transactions().unwrap();
 
-    for dg in dialogs.iter_mut().rev() {
-        if matches!(dg.diag_type, Direction::Outbound) {
-            let mut transactions = dg.transactions.get_transactions().unwrap();
+                print_msg(
+                    format!("number of transactions {}: ", transactions.len()),
+                    vrb,
+                    logs,
+                );
 
-            print_msg(
-                format!("number of transactions {}: ", transactions.len()),
-                vrb,
-                logs,
-            );
+                let mut loop_transaction = transactions.last_mut().unwrap();
+                loop_transaction.local = loop_transaction.object.set_initial_invite().into();
 
-            let mut transaction = transactions.last_mut().unwrap();
-            transaction.local = transaction.object.set_initial_invite().into();
-
-            send(
-                &SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                },
-                socket,
-                transaction.local.clone().unwrap().to_string(),
-                vrb,
-                logs,
-            );
-            break;
+                transaction = Some(loop_transaction.local.clone().unwrap().to_string());
+                break;
+            }
         }
+    }
+    if transaction.is_some() {
+        let state = state.clone();
+        let mut locked_state = state.lock().unwrap();
+        let mut socket = locked_state.get_socket().unwrap();
+
+        send(
+            &SocketV4 {
+                ip: conf.clone().sip_server,
+                port: conf.clone().sip_port,
+            },
+            &mut socket,
+            transaction.unwrap(),
+            vrb,
+            logs,
+        );
     }
 }
 
 pub fn process_request_outbound(
     request: &Request,
-    socket: &mut UdpSocket,
     conf: &JSONConfiguration,
-    _state: &Arc<Mutex<Dialogs>>,
+    state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
     logs: &MTLogs,
 ) {
+    let mut locked_state = state.lock().unwrap();
+    let mut socket = locked_state.get_socket().unwrap();
+
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
     match request.method {
@@ -147,7 +158,7 @@ pub fn process_request_outbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                socket,
+                &mut socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -171,7 +182,7 @@ pub fn process_request_outbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                socket,
+                &mut socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -194,15 +205,11 @@ pub fn process_request_outbound(
 }
 pub fn process_response_outbound(
     response: &Response,
-    socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
     logs: &MTLogs,
 ) {
-    let mut locked_state = state.lock().unwrap();
-    let mut dialogs = locked_state.get_dialogs().unwrap();
-
     match response.status_code {
         StatusCode::Trying => {}
         StatusCode::Unauthorized => {
@@ -212,29 +219,48 @@ pub fn process_response_outbound(
                     .clone(),
             )
             .unwrap();
-            for dg in dialogs.iter_mut().rev() {
-                if matches!(dg.diag_type, Direction::Outbound) {
-                    let mut transactions = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = transactions.last_mut().unwrap();
-                    transaction.object.nonce = Some(auth.nonce);
-                    transaction.object.set_auth(conf, "INVITE");
-                    transaction.object.msg = Some(transaction.local.clone().unwrap());
 
-                    send(
-                        &SocketV4 {
-                            ip: conf.clone().sip_server,
-                            port: conf.clone().sip_port,
-                        },
-                        socket,
-                        transaction.object.push_auth_to_invite().to_string(),
-                        &settings.verbosity,
-                        logs,
-                    );
-                    break;
+            let mut transaction: Option<String> = None;
+            {
+                let state: Arc<Mutex<Dialogs>> = state.clone();
+                let mut locked_state = state.lock().unwrap();
+                let mut dialogs = locked_state.get_dialogs().unwrap();
+
+                for dg in dialogs.iter_mut().rev() {
+                    if matches!(dg.diag_type, Direction::Outbound) {
+                        let mut transactions = dg.transactions.get_transactions().unwrap();
+                        let mut loop_transaction = transactions.last_mut().unwrap();
+                        loop_transaction.object.nonce = Some(auth.nonce);
+                        loop_transaction.object.set_auth(conf, "INVITE");
+                        loop_transaction.object.msg = Some(loop_transaction.local.clone().unwrap());
+                        transaction =
+                            Some(loop_transaction.object.push_auth_to_invite().to_string());
+                        break;
+                    }
                 }
+            }
+            if transaction.is_some() {
+                let state = state.clone();
+                let mut locked_state = state.lock().unwrap();
+                let mut socket = locked_state.get_socket().unwrap();
+
+                send(
+                    &SocketV4 {
+                        ip: conf.clone().sip_server,
+                        port: conf.clone().sip_port,
+                    },
+                    &mut socket,
+                    transaction.unwrap(),
+                    &settings.verbosity,
+                    logs,
+                );
             }
         }
         StatusCode::Ringing => {
+            let state: Arc<Mutex<Dialogs>> = state.clone();
+            let mut locked_state = state.lock().unwrap();
+            let mut dialogs = locked_state.get_dialogs().unwrap();
+
             for dg in dialogs.iter_mut().rev() {
                 if matches!(dg.diag_type, Direction::Outbound) {
                     let mut transactions = dg.transactions.get_transactions().unwrap();
@@ -247,78 +273,100 @@ pub fn process_response_outbound(
         StatusCode::BusyHere => {}
         StatusCode::SessionProgress => {}
         StatusCode::OK => {
-            for dg in dialogs.iter_mut().rev() {
-                if matches!(dg.diag_type, Direction::Outbound) {
-                    let mut transactions = dg.transactions.get_transactions().unwrap();
-                    let transaction = transactions.last().unwrap();
-                    if transaction.local.is_some() && transaction.remote.is_some() {
-                        let hstr = response.clone().to_header().unwrap().to_string();
-                        let remote_tag = get_remote_tag(&hstr);
-                        let now = Utc::now();
+            let mut transaction: Option<String> = None;
+            {
+                let state: Arc<Mutex<Dialogs>> = state.clone();
+                let mut locked_state = state.lock().unwrap();
+                let mut dialogs = locked_state.get_dialogs().unwrap();
 
-                        let ack = SipOptions {
-                            branch: format!(
-                                "z9hG4bK{}{}{}{}{}{}",
-                                now.month(),
-                                now.day(),
-                                now.hour(),
-                                now.minute(),
-                                now.second(),
-                                now.timestamp_millis()
-                            ),
-                            extension: conf.extension.to_string(),
-                            username: conf.username.clone(),
-                            sip_server: conf.sip_server.to_string(),
-                            sip_port: conf.sip_port.to_string(),
-                            ip: settings.ip.to_string(),
-                            msg: None,
-                            cld: transaction.object.cld.clone(),
-                            call_id: transaction.object.call_id.clone(),
-                            tag_local: transaction.object.tag_local.clone(),
-                            tag_remote: Some(remote_tag.to_string()),
-                            md5: None,
-                            nonce: None,
-                        };
+                for dg in dialogs.iter_mut().rev() {
+                    if matches!(dg.diag_type, Direction::Outbound) {
+                        let mut transactions = dg.transactions.get_transactions().unwrap();
+                        let loop_transaction = transactions.last().unwrap();
+                        if loop_transaction.local.is_some() && loop_transaction.remote.is_some() {
+                            let hstr = response.clone().to_header().unwrap().to_string();
+                            let remote_tag = get_remote_tag(&hstr);
+                            let now = Utc::now();
 
-                        let via_from_invite =
-                            transaction.local.as_ref().unwrap().via_header().unwrap();
-                        let cseq_count = transaction.local.as_ref().unwrap().cseq_header().unwrap();
-                        let contact = response.contact_header().unwrap();
+                            let ack = SipOptions {
+                                branch: format!(
+                                    "z9hG4bK{}{}{}{}{}{}",
+                                    now.month(),
+                                    now.day(),
+                                    now.hour(),
+                                    now.minute(),
+                                    now.second(),
+                                    now.timestamp_millis()
+                                ),
+                                extension: conf.extension.to_string(),
+                                username: conf.username.clone(),
+                                sip_server: conf.sip_server.to_string(),
+                                sip_port: conf.sip_port.to_string(),
+                                ip: settings.ip.to_string(),
+                                msg: None,
+                                cld: loop_transaction.object.cld.clone(),
+                                call_id: loop_transaction.object.call_id.clone(),
+                                tag_local: loop_transaction.object.tag_local.clone(),
+                                tag_remote: Some(remote_tag.to_string()),
+                                md5: None,
+                                nonce: None,
+                            };
 
-                        let mut ack_transaction = Transaction {
-                            object: ack.clone(),
-                            local: Some(ack.create_ack(
+                            let via_from_invite = loop_transaction
+                                .local
+                                .as_ref()
+                                .unwrap()
+                                .via_header()
+                                .unwrap();
+                            let cseq_count = loop_transaction
+                                .local
+                                .as_ref()
+                                .unwrap()
+                                .cseq_header()
+                                .unwrap();
+                            let contact = response.contact_header().unwrap();
+
+                            let mut ack_transaction = Transaction {
+                                object: ack.clone(),
+                                local: Some(ack.create_ack(
+                                    via_from_invite,
+                                    response.headers.get_record_route_header_array().clone(),
+                                    contact,
+                                    cseq_count,
+                                )),
+                                remote: None,
+                                tr_type: TransactionType::Ack,
+                            };
+
+                            ack_transaction.object.msg = Some(ack_transaction.object.create_ack(
                                 via_from_invite,
                                 response.headers.get_record_route_header_array().clone(),
                                 contact,
                                 cseq_count,
-                            )),
-                            remote: None,
-                            tr_type: TransactionType::Ack,
-                        };
+                            ));
 
-                        ack_transaction.object.msg = Some(ack_transaction.object.create_ack(
-                            via_from_invite,
-                            response.headers.get_record_route_header_array().clone(),
-                            contact,
-                            cseq_count,
-                        ));
-
-                        transactions.push(ack_transaction.clone());
-
-                        send(
-                            &SocketV4 {
-                                ip: conf.clone().sip_server,
-                                port: conf.clone().sip_port,
-                            },
-                            socket,
-                            ack_transaction.local.as_ref().unwrap().to_string(),
-                            &settings.verbosity,
-                            logs,
-                        );
+                            transactions.push(ack_transaction.clone());
+                            transaction = Some(ack_transaction.local.as_ref().unwrap().to_string());
+                        }
+                        break;
                     }
-                    break;
                 }
+            }
+            if transaction.is_some() {
+                let state = state.clone();
+                let mut locked_state = state.lock().unwrap();
+                let mut socket = locked_state.get_socket().unwrap();
+
+                send(
+                    &SocketV4 {
+                        ip: conf.clone().sip_server,
+                        port: conf.clone().sip_port,
+                    },
+                    &mut socket,
+                    transaction.unwrap(),
+                    &settings.verbosity,
+                    logs,
+                );
             }
         }
         _ => todo!(),

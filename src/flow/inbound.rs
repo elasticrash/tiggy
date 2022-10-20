@@ -18,7 +18,6 @@ use rsip::{
 };
 use std::{
     convert::TryFrom,
-    net::UdpSocket,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -26,11 +25,14 @@ use std::{
 
 pub fn process_request_inbound(
     request: &Request,
-    socket: &mut UdpSocket,
     conf: &JSONConfiguration,
+    state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
     logs: &MTLogs,
 ) {
+    let mut locked_state = state.lock().unwrap();
+    let mut socket = locked_state.get_socket().unwrap();
+
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
     match request.method {
@@ -42,7 +44,7 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                socket,
+                &mut socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -63,7 +65,7 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                socket,
+                &mut socket,
                 trying(conf, &settings.ip.clone().to_string(), request).to_string(),
                 &settings.verbosity,
                 logs,
@@ -74,7 +76,7 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                socket,
+                &mut socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -95,7 +97,7 @@ pub fn process_request_inbound(
                     ip: via.uri.host().to_string(),
                     port: 5060,
                 },
-                socket,
+                &mut socket,
                 ok(
                     conf,
                     &settings.ip.clone().to_string(),
@@ -118,15 +120,11 @@ pub fn process_request_inbound(
 
 pub fn process_response_inbound(
     response: &Response,
-    socket: &mut UdpSocket,
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
     logs: &MTLogs,
 ) {
-    let mut locked_state = state.lock().unwrap();
-    let mut dialogs = locked_state.get_dialogs().unwrap();
-
     match response.status_code {
         StatusCode::Unauthorized => {
             let auth = WwwAuthenticate::try_from(
@@ -136,26 +134,41 @@ pub fn process_response_inbound(
             )
             .unwrap();
 
-            for dg in dialogs.iter_mut() {
-                if matches!(dg.diag_type, Direction::Inbound) {
-                    let mut transactions = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = transactions.last_mut().unwrap();
-                    transaction.object.nonce = Some(auth.nonce);
-                    transaction.object.set_auth(conf, "REGISTER");
-                    transaction.object.msg = transaction.local.clone();
+            let mut transaction: Option<String> = None;
+            {
+                let state: Arc<Mutex<Dialogs>> = state.clone();
+                let mut locked_state = state.lock().unwrap();
+                let mut dialogs = locked_state.get_dialogs().unwrap();
 
-                    send(
-                        &SocketV4 {
-                            ip: conf.clone().sip_server,
-                            port: conf.clone().sip_port,
-                        },
-                        socket,
-                        transaction.object.push_auth_to_register().to_string(),
-                        &settings.verbosity,
-                        logs,
-                    );
-                    break;
+                for dg in dialogs.iter_mut() {
+                    if matches!(dg.diag_type, Direction::Inbound) {
+                        let mut transactions = dg.transactions.get_transactions().unwrap();
+                        let mut local_transaction = transactions.last_mut().unwrap();
+                        local_transaction.object.nonce = Some(auth.nonce);
+                        local_transaction.object.set_auth(conf, "REGISTER");
+                        local_transaction.object.msg = local_transaction.local.clone();
+
+                        transaction =
+                            Some(local_transaction.object.push_auth_to_register().to_string());
+                        break;
+                    }
                 }
+            }
+
+            if transaction.is_some() {
+                let locked_socket = state.clone();
+                let mut unlocked_socket = locked_socket.lock().unwrap();
+                let mut socket = unlocked_socket.get_socket().unwrap();
+                send(
+                    &SocketV4 {
+                        ip: conf.clone().sip_server,
+                        port: conf.clone().sip_port,
+                    },
+                    &mut socket,
+                    transaction.unwrap(),
+                    &settings.verbosity,
+                    logs,
+                );
             }
         }
         StatusCode::Trying => {}
