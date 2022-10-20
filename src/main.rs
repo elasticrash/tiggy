@@ -131,7 +131,7 @@ fn main() -> Result<(), io::Error> {
                     }
                 }
 
-                if maybe_msg.is_some() {
+                if let Some(..) = maybe_msg {
                     let msg = maybe_msg.unwrap();
                     match settings.flow {
                         Direction::Inbound => match msg {

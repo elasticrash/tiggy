@@ -155,7 +155,7 @@ pub fn process_response_inbound(
                 }
             }
 
-            if transaction.is_some() {
+            if let Some(..) = transaction {
                 let locked_socket = state.clone();
                 let mut unlocked_socket = locked_socket.lock().unwrap();
                 let mut socket = unlocked_socket.get_socket().unwrap();

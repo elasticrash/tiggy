@@ -119,7 +119,7 @@ pub fn outbound_start(
             }
         }
     }
-    if transaction.is_some() {
+    if let Some(..) = transaction {
         let state = state.clone();
         let mut locked_state = state.lock().unwrap();
         let mut socket = locked_state.get_socket().unwrap();
@@ -239,7 +239,7 @@ pub fn process_response_outbound(
                     }
                 }
             }
-            if transaction.is_some() {
+            if let Some(..) = transaction {
                 let state = state.clone();
                 let mut locked_state = state.lock().unwrap();
                 let mut socket = locked_state.get_socket().unwrap();
@@ -352,7 +352,7 @@ pub fn process_response_outbound(
                     }
                 }
             }
-            if transaction.is_some() {
+            if let Some(..) = transaction {
                 let state = state.clone();
                 let mut locked_state = state.lock().unwrap();
                 let mut socket = locked_state.get_socket().unwrap();

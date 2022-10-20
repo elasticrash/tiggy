@@ -81,7 +81,7 @@ pub fn register_ua(
         }
     }
 
-    if transaction.is_some() {
+    if let Some(..) = transaction {
         let state = dialog_state.clone();
         let mut locked_state = state.lock().unwrap();
         let mut socket = locked_state.get_socket().unwrap();
@@ -111,15 +111,14 @@ pub fn unregister_ua(
         let mut locked_state = state.lock().unwrap();
         let mut dialogs = locked_state.get_dialogs().unwrap();
 
-        for dg in dialogs.iter_mut() {
+        if let Some(dg) = dialogs.iter_mut().next() {
             let mut transactions = dg.transactions.get_transactions().unwrap();
             let transaction = transactions.first_mut().unwrap();
             sip = Some(transaction.object.unregister());
-            break;
         }
     }
 
-    if sip.is_some() {
+    if let Some(..) = sip {
         let locked_socket = dialog_state.clone();
         let mut unlocked_socket = locked_socket.lock().unwrap();
         let mut socket = unlocked_socket.get_socket().unwrap();
