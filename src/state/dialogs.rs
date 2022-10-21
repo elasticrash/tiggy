@@ -1,10 +1,11 @@
+use crate::transmissions::sockets::SocketV4;
+
 use super::transactions::Transaction;
 use chrono::prelude::*;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    net::UdpSocket,
-    sync::{Arc, Mutex, MutexGuard, PoisonError},
+    sync::{mpsc::Sender, Arc, Mutex, MutexGuard, PoisonError},
 };
 /// SIP dialog
 pub struct Dialog {
@@ -33,7 +34,7 @@ impl Display for Direction {
 /// Collection of Dialogs
 pub struct Dialogs {
     pub state: Arc<Mutex<Vec<Dialog>>>,
-    pub socket: Arc<Mutex<UdpSocket>>,
+    pub sender: Arc<Mutex<Sender<SocketV4>>>,
 }
 
 impl Display for Dialog {
@@ -62,12 +63,10 @@ impl<T> From<PoisonError<T>> for DialogsLockError {
 }
 
 impl Dialogs {
-    pub fn new(port: i32) -> Dialogs {
+    pub fn new(rs: Sender<SocketV4>) -> Dialogs {
         Dialogs {
             state: Arc::new(Mutex::new(vec![])),
-            socket: Arc::new(Mutex::new(
-                UdpSocket::bind(format!("0.0.0.0:{}", port)).unwrap(),
-            )),
+            sender: Arc::new(Mutex::new(rs)),
         }
     }
 
@@ -75,8 +74,8 @@ impl Dialogs {
         Ok(self.state.lock()?)
     }
 
-    pub fn get_socket(&mut self) -> Result<MutexGuard<UdpSocket>, DialogsLockError> {
-        Ok(self.socket.lock()?)
+    pub fn get_sender(&mut self) -> Result<MutexGuard<Sender<SocketV4>>, DialogsLockError> {
+        Ok(self.sender.lock()?)
     }
 }
 

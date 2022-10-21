@@ -6,13 +6,12 @@ use uuid::Uuid;
 
 use crate::{
     config::JSONConfiguration,
-    log::MTLogs,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
-        options::{SelfConfiguration, SipOptions, Verbosity},
+        options::{SelfConfiguration, SipOptions},
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::{send, SocketV4},
+    transmissions::sockets::SocketV4,
 };
 
 /// Preparation for registering the UA,
@@ -21,7 +20,6 @@ pub fn register_ua(
     dialog_state: &Arc<Mutex<Dialogs>>,
     conf: &JSONConfiguration,
     settings: &mut SelfConfiguration,
-    logs: &MTLogs,
 ) {
     let now = Utc::now();
 
@@ -84,27 +82,18 @@ pub fn register_ua(
     if let Some(..) = transaction {
         let state = dialog_state.clone();
         let mut locked_state = state.lock().unwrap();
-        let mut socket = locked_state.get_socket().unwrap();
-        send(
-            &SocketV4 {
-                ip: conf.clone().sip_server,
-                port: conf.clone().sip_port,
-            },
-            &mut socket,
-            transaction.unwrap(),
-            &settings.verbosity,
-            logs,
-        );
+        let tx = locked_state.get_sender().unwrap();
+        tx.send(SocketV4 {
+            ip: conf.clone().sip_server,
+            port: conf.clone().sip_port,
+            bytes: transaction.unwrap().as_bytes().to_vec(),
+        })
+        .unwrap();
     }
 }
 
 /// Sends the registration again with Expires 0
-pub fn unregister_ua(
-    dialog_state: &Arc<Mutex<Dialogs>>,
-    conf: &JSONConfiguration,
-    vrb: &Verbosity,
-    logs: &MTLogs,
-) {
+pub fn unregister_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration) {
     let mut sip: Option<SipMessage> = None;
     {
         let state: Arc<Mutex<Dialogs>> = dialog_state.clone();
@@ -121,16 +110,12 @@ pub fn unregister_ua(
     if let Some(..) = sip {
         let locked_socket = dialog_state.clone();
         let mut unlocked_socket = locked_socket.lock().unwrap();
-        let mut socket = unlocked_socket.get_socket().unwrap();
-        send(
-            &SocketV4 {
-                ip: conf.clone().sip_server,
-                port: conf.clone().sip_port,
-            },
-            &mut socket,
-            sip.unwrap().to_string(),
-            vrb,
-            logs,
-        );
+        let tx = unlocked_socket.get_sender().unwrap();
+        tx.send(SocketV4 {
+            ip: conf.clone().sip_server,
+            port: conf.clone().sip_port,
+            bytes: sip.unwrap().to_string().as_bytes().to_vec(),
+        })
+        .unwrap();
     }
 }

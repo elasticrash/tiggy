@@ -1,7 +1,7 @@
 use std::{
     io,
-    sync::{mpsc::Sender, Arc},
-    thread,
+    net::IpAddr,
+    sync::{mpsc::Sender, Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -9,15 +9,23 @@ use crossterm::event::{self, Event, KeyCode};
 use tui::{backend::Backend, Terminal};
 
 use crate::{
+    config::JSONConfiguration,
+    flow::outbound::{outbound_configure, outbound_start},
     log::{self, MTLogs},
+    processor::message::{Message, MessageType},
+    startup::registration::unregister_ua,
+    state::{
+        dialogs::{Dialogs, Direction},
+        options::{SelfConfiguration, Verbosity},
+    },
     ui::app::{ui, App, InputMode},
 };
 
-use super::builder::{build_menu, print_menu, MenuType};
+use super::builder::{build_menu, print_menu, MenuItem, MenuType};
 
 pub fn menu_and_refresh<B: Backend>(
     terminal: &mut Terminal<B>,
-    tx: &Sender<String>,
+    tx: &Sender<Message>,
     logs: &MTLogs,
     mut app: App,
 ) -> io::Result<()> {
@@ -45,13 +53,21 @@ pub fn menu_and_refresh<B: Backend>(
                                     print_menu();
                                 }
                                 MenuType::Exit => {
-                                    log::slog("Terminating", logs);
-                                    tx.send("u".to_string()).unwrap();
-                                    thread::sleep(Duration::from_millis(500));
+                                    tx.send(Message::new(
+                                        MessageType::MenuCommand,
+                                        key_value,
+                                        None,
+                                    ))
+                                    .unwrap();
                                     return Ok(());
                                 }
-                                MenuType::Silent => {
-                                    tx.send(key_value.to_string()).unwrap();
+                                MenuType::Silent | MenuType::Quiet => {
+                                    tx.send(Message::new(
+                                        MessageType::MenuCommand,
+                                        key_value,
+                                        None,
+                                    ))
+                                    .unwrap();
                                 }
                                 MenuType::Dial => {
                                     app.input_mode = InputMode::Editing;
@@ -60,7 +76,6 @@ pub fn menu_and_refresh<B: Backend>(
                                     todo!();
                                 }
                                 MenuType::Unregister => {}
-                                MenuType::Quiet => tx.send(key_value.to_string()).unwrap(),
                             }
                         }
                         None => log::slog("Invalid Command", logs),
@@ -68,8 +83,12 @@ pub fn menu_and_refresh<B: Backend>(
                     InputMode::Editing => match key.code {
                         KeyCode::Enter => {
                             app.input_mode = InputMode::Normal;
-                            tx.send(format!("d|{}", app.input.trim().to_owned()))
-                                .unwrap();
+                            tx.send(Message::new(
+                                MessageType::MenuCommand,
+                                'd',
+                                Some(app.input.trim().to_owned()),
+                            ))
+                            .unwrap()
                         }
                         KeyCode::Char(c) => {
                             app.input.push(c);
@@ -89,4 +108,73 @@ pub fn menu_and_refresh<B: Backend>(
             }
         }
     }
+}
+
+pub fn send_menu_commands(
+    processable_object: &Message,
+    dialog_state: &Arc<Mutex<Dialogs>>,
+    action_menu: &Arc<Vec<MenuItem>>,
+    conf: &JSONConfiguration,
+    settings: &mut SelfConfiguration,
+    ip: &IpAddr,
+    logs: &MTLogs,
+) -> bool {
+    let key_code_command = KeyCode::Char(processable_object.bind);
+
+    match action_menu.iter().find(|&x| x.value == key_code_command) {
+        Some(item) => match item.category {
+            super::builder::MenuType::Unregister => false,
+            super::builder::MenuType::Exit => {
+                unregister_ua(dialog_state, conf);
+                true
+            }
+            super::builder::MenuType::Silent => {
+                settings.verbosity = if matches!(settings.verbosity, Verbosity::Diagnostic) {
+                    Verbosity::Minimal
+                } else {
+                    Verbosity::Diagnostic
+                };
+                false
+            }
+            super::builder::MenuType::Quiet => {
+                settings.verbosity = Verbosity::Quiet;
+                false
+            }
+            super::builder::MenuType::Dial => {
+                match &processable_object.content {
+                    Some(o) => {
+                        if is_string_numeric(o.clone()) {
+                            settings.flow = Direction::Outbound;
+                            outbound_configure(conf, ip, o, dialog_state);
+                            outbound_start(conf, dialog_state, &settings.verbosity, logs);
+                        }
+                    }
+                    None => todo!(),
+                };
+                false
+            }
+            super::builder::MenuType::Answer => todo!(),
+            _ => {
+                log::slog(
+                    format!(
+                        "{:?}: Invalid Command/Not supported",
+                        processable_object.bind
+                    )
+                    .as_str(),
+                    logs,
+                );
+                false
+            }
+        },
+        None => todo!(),
+    }
+}
+
+fn is_string_numeric(str: String) -> bool {
+    for c in str.chars() {
+        if !c.is_numeric() {
+            return false;
+        }
+    }
+    true
 }

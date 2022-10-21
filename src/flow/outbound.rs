@@ -8,7 +8,7 @@ use crate::{
         options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::{send, SocketV4},
+    transmissions::sockets::SocketV4,
 };
 
 use chrono::prelude::*;
@@ -122,18 +122,14 @@ pub fn outbound_start(
     if let Some(..) = transaction {
         let state = state.clone();
         let mut locked_state = state.lock().unwrap();
-        let mut socket = locked_state.get_socket().unwrap();
+        let tx = locked_state.get_sender().unwrap();
 
-        send(
-            &SocketV4 {
-                ip: conf.clone().sip_server,
-                port: conf.clone().sip_port,
-            },
-            &mut socket,
-            transaction.unwrap(),
-            vrb,
-            logs,
-        );
+        tx.send(SocketV4 {
+            ip: conf.clone().sip_server,
+            port: conf.clone().sip_port,
+            bytes: transaction.unwrap().as_bytes().to_vec(),
+        })
+        .unwrap();
     }
 }
 
@@ -142,10 +138,9 @@ pub fn process_request_outbound(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
-    logs: &MTLogs,
 ) {
     let mut locked_state = state.lock().unwrap();
-    let mut socket = locked_state.get_socket().unwrap();
+    let tx = locked_state.get_sender().unwrap();
 
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
@@ -153,23 +148,21 @@ pub fn process_request_outbound(
         Method::Ack => todo!(),
         Method::Bye => {
             settings.flow = Direction::Inbound;
-            send(
-                &SocketV4 {
-                    ip: via.uri.host().to_string(),
-                    port: 5060,
-                },
-                &mut socket,
-                ok(
+            tx.send(SocketV4 {
+                ip: via.uri.host().to_string(),
+                port: 5060,
+                bytes: ok(
                     conf,
                     &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Bye,
                     false,
                 )
-                .to_string(),
-                &settings.verbosity,
-                logs,
-            );
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+            })
+            .unwrap();
         }
         Method::Cancel => todo!(),
         Method::Info => todo!(),
@@ -177,23 +170,21 @@ pub fn process_request_outbound(
         Method::Message => todo!(),
         Method::Notify => todo!(),
         Method::Options => {
-            send(
-                &SocketV4 {
-                    ip: via.uri.host().to_string(),
-                    port: 5060,
-                },
-                &mut socket,
-                ok(
+            tx.send(SocketV4 {
+                ip: via.uri.host().to_string(),
+                port: 5060,
+                bytes: ok(
                     conf,
                     &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Options,
                     false,
                 )
-                .to_string(),
-                &settings.verbosity,
-                logs,
-            );
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+            })
+            .unwrap();
         }
         Method::PRack => todo!(),
         Method::Publish => todo!(),
@@ -208,7 +199,6 @@ pub fn process_response_outbound(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
-    logs: &MTLogs,
 ) {
     match response.status_code {
         StatusCode::Trying => {}
@@ -242,18 +232,14 @@ pub fn process_response_outbound(
             if let Some(..) = transaction {
                 let state = state.clone();
                 let mut locked_state = state.lock().unwrap();
-                let mut socket = locked_state.get_socket().unwrap();
+                let tx = locked_state.get_sender().unwrap();
 
-                send(
-                    &SocketV4 {
-                        ip: conf.clone().sip_server,
-                        port: conf.clone().sip_port,
-                    },
-                    &mut socket,
-                    transaction.unwrap(),
-                    &settings.verbosity,
-                    logs,
-                );
+                tx.send(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: transaction.unwrap().as_bytes().to_vec(),
+                })
+                .unwrap();
             }
         }
         StatusCode::Ringing => {
@@ -355,18 +341,14 @@ pub fn process_response_outbound(
             if let Some(..) = transaction {
                 let state = state.clone();
                 let mut locked_state = state.lock().unwrap();
-                let mut socket = locked_state.get_socket().unwrap();
+                let tx = locked_state.get_sender().unwrap();
 
-                send(
-                    &SocketV4 {
-                        ip: conf.clone().sip_server,
-                        port: conf.clone().sip_port,
-                    },
-                    &mut socket,
-                    transaction.unwrap(),
-                    &settings.verbosity,
-                    logs,
-                );
+                tx.send(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: transaction.unwrap().as_bytes().to_vec(),
+                })
+                .unwrap();
             }
         }
         _ => todo!(),

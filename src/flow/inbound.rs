@@ -5,8 +5,7 @@ use crate::{
         dialogs::{Dialogs, Direction},
         options::SelfConfiguration,
     },
-    transmissions::sockets::{send, SocketV4},
-    MTLogs,
+    transmissions::sockets::SocketV4,
 };
 use rsip::{
     header_opt,
@@ -28,10 +27,9 @@ pub fn process_request_inbound(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
-    logs: &MTLogs,
 ) {
     let mut locked_state = state.lock().unwrap();
-    let mut socket = locked_state.get_socket().unwrap();
+    let tx = locked_state.get_sender().unwrap();
 
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
@@ -39,76 +37,69 @@ pub fn process_request_inbound(
         rsip::Method::Register => {}
         rsip::Method::Ack => {}
         rsip::Method::Bye => {
-            send(
-                &SocketV4 {
-                    ip: via.uri.host().to_string(),
-                    port: 5060,
-                },
-                &mut socket,
-                ok(
+            tx.send(SocketV4 {
+                ip: via.uri.host().to_string(),
+                port: 5060,
+                bytes: ok(
                     conf,
                     &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Bye,
                     false,
                 )
-                .to_string(),
-                &settings.verbosity,
-                logs,
-            );
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+            })
+            .unwrap();
         }
         rsip::Method::Cancel => {}
         rsip::Method::Info => {}
         rsip::Method::Invite => {
-            send(
-                &SocketV4 {
-                    ip: via.uri.host().to_string(),
-                    port: 5060,
-                },
-                &mut socket,
-                trying(conf, &settings.ip.clone().to_string(), request).to_string(),
-                &settings.verbosity,
-                logs,
-            );
+            tx.send(SocketV4 {
+                ip: via.uri.host().to_string(),
+                port: 5060,
+                bytes: trying(conf, &settings.ip.clone().to_string(), request)
+                    .to_string()
+                    .as_bytes()
+                    .to_vec(),
+            })
+            .unwrap();
             thread::sleep(Duration::from_secs(1));
-            send(
-                &SocketV4 {
-                    ip: via.uri.host().to_string(),
-                    port: 5060,
-                },
-                &mut socket,
-                ok(
+            tx.send(SocketV4 {
+                ip: via.uri.host().to_string(),
+                port: 5060,
+                bytes: ok(
                     conf,
                     &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Invite,
                     true,
                 )
-                .to_string(),
-                &settings.verbosity,
-                logs,
-            );
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+            })
+            .unwrap();
         }
         rsip::Method::Message => {}
         rsip::Method::Notify => {}
         rsip::Method::Options => {
-            send(
-                &SocketV4 {
-                    ip: via.uri.host().to_string(),
-                    port: 5060,
-                },
-                &mut socket,
-                ok(
+            tx.send(SocketV4 {
+                ip: via.uri.host().to_string(),
+                port: 5060,
+                bytes: ok(
                     conf,
                     &settings.ip.clone().to_string(),
                     request,
                     rsip::Method::Options,
                     false,
                 )
-                .to_string(),
-                &settings.verbosity,
-                logs,
-            );
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+            })
+            .unwrap();
         }
         rsip::Method::PRack => {}
         rsip::Method::Publish => {}
@@ -122,8 +113,6 @@ pub fn process_response_inbound(
     response: &Response,
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
-    settings: &mut SelfConfiguration,
-    logs: &MTLogs,
 ) {
     match response.status_code {
         StatusCode::Unauthorized => {
@@ -158,17 +147,13 @@ pub fn process_response_inbound(
             if let Some(..) = transaction {
                 let locked_socket = state.clone();
                 let mut unlocked_socket = locked_socket.lock().unwrap();
-                let mut socket = unlocked_socket.get_socket().unwrap();
-                send(
-                    &SocketV4 {
-                        ip: conf.clone().sip_server,
-                        port: conf.clone().sip_port,
-                    },
-                    &mut socket,
-                    transaction.unwrap(),
-                    &settings.verbosity,
-                    logs,
-                );
+                let tx = unlocked_socket.get_sender().unwrap();
+                tx.send(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: transaction.unwrap().as_bytes().to_vec(),
+                })
+                .unwrap();
             }
         }
         StatusCode::Trying => {}

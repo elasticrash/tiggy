@@ -21,30 +21,33 @@ mod transmissions;
 /// Terminal UI
 mod ui;
 
+/// Processor
+mod processor;
+
 use network::get_ipv4;
+use processor::message::{setup_processor, Message};
 use rsip::SipMessage;
-use startup::registration::{register_ua, unregister_ua};
+use startup::registration::register_ua;
 use state::options::{SelfConfiguration, Verbosity};
 use std::collections::VecDeque;
 use std::io;
+use std::net::UdpSocket;
 use std::sync::mpsc::{self};
 use std::sync::{Arc, Mutex};
 use std::thread::{self};
 use std::time::Duration;
-use ui::menu;
+use transmissions::sockets::{send, SocketV4};
 use ui::menu::builder::build_menu;
-use ui::menu::draw::menu_and_refresh;
+use ui::menu::draw::{menu_and_refresh, send_menu_commands};
 
 use crate::flow::inbound::{process_request_inbound, process_response_inbound};
 use crate::transmissions::sockets::{peek, receive};
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture, KeyCode};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use flow::outbound::{
-    outbound_configure, outbound_start, process_request_outbound, process_response_outbound,
-};
+use flow::outbound::{process_request_outbound, process_response_outbound};
 use log::MTLogs;
 use state::dialogs::{Dialogs, Direction};
 use tui::backend::CrosstermBackend;
@@ -65,7 +68,8 @@ fn main() -> Result<(), io::Error> {
 
     log::slog(&format!("IP found {} :", ip), &logs);
 
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = setup_processor::<Message>();
+    let (stx, srx) = setup_processor::<SocketV4>();
 
     logs.lock().unwrap().push_back(format!(
         "<{:?}> [{}] - {:?}",
@@ -87,6 +91,7 @@ fn main() -> Result<(), io::Error> {
     })?;
 
     let builder = thread::Builder::new();
+    let mut socket = UdpSocket::bind(format!("0.0.0.0:{}", 5060)).unwrap();
 
     let _handler = builder
         .spawn(move || {
@@ -97,27 +102,25 @@ fn main() -> Result<(), io::Error> {
             };
 
             let mut buffer = [0_u8; 65535];
-            let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new(5060)));
+
+            let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new(stx)));
             {
-                let mut locked_state = dialog_state.lock().unwrap();
-                let socket = locked_state.get_socket().unwrap();
                 let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
 
                 socket
                     .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
                     .expect("connect function failed");
             }
-            register_ua(&dialog_state, &conf, &mut settings, &thread_logs);
+
+            register_ua(&dialog_state, &conf, &mut settings);
+            let action_menu = Arc::new(build_menu());
 
             'thread: loop {
+                // peek on the socket, for pending messages
                 let mut maybe_msg: Option<SipMessage> = None;
                 {
-                    let mut locked_state = dialog_state.lock().unwrap();
-                    let mut socket = locked_state.get_socket().unwrap();
-
                     let packets_queued = peek(&mut socket, &mut buffer);
 
-                    //flog(&vec![&format!("packets queued {}", packets_queued)]);
                     if packets_queued > 0 {
                         maybe_msg = match receive(
                             &mut socket,
@@ -131,6 +134,7 @@ fn main() -> Result<(), io::Error> {
                     }
                 }
 
+                // distribute message on the correct process
                 if let Some(..) = maybe_msg {
                     let msg = maybe_msg.unwrap();
                     match settings.flow {
@@ -140,15 +144,10 @@ fn main() -> Result<(), io::Error> {
                                 &conf,
                                 &dialog_state,
                                 &mut settings,
-                                &thread_logs,
                             ),
-                            rsip::SipMessage::Response(response) => process_response_inbound(
-                                &response,
-                                &conf,
-                                &dialog_state,
-                                &mut settings,
-                                &thread_logs,
-                            ),
+                            rsip::SipMessage::Response(response) => {
+                                process_response_inbound(&response, &conf, &dialog_state)
+                            }
                         },
                         Direction::Outbound => match msg {
                             rsip::SipMessage::Request(request) => process_request_outbound(
@@ -156,80 +155,39 @@ fn main() -> Result<(), io::Error> {
                                 &conf,
                                 &dialog_state,
                                 &mut settings,
-                                &thread_logs,
                             ),
                             rsip::SipMessage::Response(response) => process_response_outbound(
                                 &response,
                                 &conf,
                                 &dialog_state,
                                 &mut settings,
-                                &thread_logs,
                             ),
                         },
                     }
                 }
 
-                let action_menu = Arc::new(build_menu());
-
-                if let Ok(code) = rx.try_recv() {
-                    let mut command = String::from(code);
-                    let mut argument: String = "".to_string();
+                // send a command for processing
+                if let Ok(processable_object) = rx.try_recv() {
                     log::slog(
-                        format!("received command, {}", command).as_str(),
+                        format!("received input, {:?}", processable_object.bind).as_str(),
                         &thread_logs,
                     );
 
-                    if command.len() > 1 {
-                        let split_command = command.split('|').collect::<Vec<&str>>();
-                        argument = split_command[1].to_string();
-                        command = split_command[0].to_string();
+                    if send_menu_commands(
+                        &processable_object,
+                        &dialog_state,
+                        &action_menu,
+                        &conf,
+                        &mut settings,
+                        &ip,
+                        &thread_logs,
+                    ) {
+                        break 'thread;
                     }
+                }
 
-                    if !is_string_numeric(argument.clone()) {
-                        command = "invalid_argument".to_string();
-                    }
-
-                    let key_code_command = KeyCode::Char(command.chars().next().unwrap());
-
-                    match action_menu.iter().find(|&x| x.value == key_code_command) {
-                        Some(item) => match item.category {
-                            menu::builder::MenuType::Unregister => {
-                                unregister_ua(
-                                    &dialog_state,
-                                    &conf,
-                                    &settings.verbosity,
-                                    &thread_logs,
-                                );
-                                break 'thread;
-                            }
-                            menu::builder::MenuType::Exit => {}
-                            menu::builder::MenuType::Silent => {
-                                settings.verbosity =
-                                    if matches!(settings.verbosity, Verbosity::Diagnostic) {
-                                        Verbosity::Minimal
-                                    } else {
-                                        Verbosity::Diagnostic
-                                    }
-                            }
-                            menu::builder::MenuType::Quiet => settings.verbosity = Verbosity::Quiet,
-                            menu::builder::MenuType::Dial => {
-                                settings.flow = Direction::Outbound;
-                                outbound_configure(&conf, &ip, &argument.clone(), &dialog_state);
-                                outbound_start(
-                                    &conf,
-                                    &dialog_state,
-                                    &settings.verbosity,
-                                    &thread_logs,
-                                );
-                            }
-                            menu::builder::MenuType::Answer => todo!(),
-                            _ => log::slog(
-                                format!("{} Not supported", command).as_str(),
-                                &thread_logs,
-                            ),
-                        },
-                        None => todo!(),
-                    }
+                if let Ok(data) = srx.try_recv() {
+                    send(&mut socket, &data, &settings.verbosity, &thread_logs);
                 }
             }
         })
@@ -253,13 +211,4 @@ fn main() -> Result<(), io::Error> {
     }
 
     Ok(())
-}
-
-fn is_string_numeric(str: String) -> bool {
-    for c in str.chars() {
-        if !c.is_numeric() {
-            return false;
-        }
-    }
-    true
 }
