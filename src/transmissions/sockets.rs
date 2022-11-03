@@ -5,25 +5,24 @@ use crate::{
 use rsip::SipMessage;
 use std::{convert::TryFrom, net::UdpSocket};
 
-/// Bundle Ip and Port for Upd connections into a signle struct
+/// Bundle Ip, Port and payload for Upd connections into a single struct
 pub struct SocketV4 {
     pub ip: String,
     pub port: u16,
+    pub bytes: Vec<u8>,
 }
 
 /// Sends a udp message
-pub fn send(
-    s_conf: &SocketV4,
-    socket: &mut UdpSocket,
-    msg: String,
-    vrb: &Verbosity,
-    logs: &MTLogs,
-) {
+pub fn send(socket: &mut UdpSocket, data: &SocketV4, vrb: &Verbosity, logs: &MTLogs) {
     print_msg("===>".to_string(), vrb, logs);
-    print_msg(msg.clone(), vrb, logs);
+    print_msg(
+        String::from_utf8_lossy(&data.bytes).to_string(),
+        vrb,
+        logs,
+    );
 
     socket
-        .send_to(msg.as_bytes(), format!("{}:{}", s_conf.ip, s_conf.port))
+        .send_to(&data.bytes, format!("{}:{}", &data.ip, &data.port))
         .unwrap();
 }
 
