@@ -34,7 +34,8 @@ impl Display for Direction {
 /// Collection of Dialogs
 pub struct Dialogs {
     pub state: Arc<Mutex<Vec<Dialog>>>,
-    pub sender: Arc<Mutex<Sender<SocketV4>>>,
+    pub sip: Arc<Mutex<Sender<SocketV4>>>,
+    pub rtp: Arc<Mutex<Sender<SocketV4>>>,
 }
 
 impl Display for Dialog {
@@ -63,10 +64,11 @@ impl<T> From<PoisonError<T>> for DialogsLockError {
 }
 
 impl Dialogs {
-    pub fn new(rs: Sender<SocketV4>) -> Dialogs {
+    pub fn new(sip: Sender<SocketV4>, rtp: Sender<SocketV4>) -> Dialogs {
         Dialogs {
             state: Arc::new(Mutex::new(vec![])),
-            sender: Arc::new(Mutex::new(rs)),
+            sip: Arc::new(Mutex::new(sip)),
+            rtp: Arc::new(Mutex::new(rtp)),
         }
     }
 
@@ -75,7 +77,7 @@ impl Dialogs {
     }
 
     pub fn get_sender(&mut self) -> Result<MutexGuard<Sender<SocketV4>>, DialogsLockError> {
-        Ok(self.sender.lock()?)
+        Ok(self.sip.lock()?)
     }
 }
 

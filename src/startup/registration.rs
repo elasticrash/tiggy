@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     config::JSONConfiguration,
+    log::flog,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::{SelfConfiguration, SipOptions},
@@ -62,7 +63,10 @@ pub fn register_ua(
             time: Local::now(),
         });
 
+        flog(&vec![{ &format!("register found {}", "dg.time") }]);
+
         for dg in dialogs.iter_mut() {
+            flog(&vec![{ &format!("dg found {}", dg.time) }]);
             if matches!(dg.diag_type, Direction::Inbound) {
                 let mut transactions = dg.transactions.get_transactions().unwrap();
                 transactions.push(Transaction {
@@ -87,6 +91,7 @@ pub fn register_ua(
             ip: conf.clone().sip_server,
             port: conf.clone().sip_port,
             bytes: transaction.unwrap().as_bytes().to_vec(),
+            exit: false,
         })
         .unwrap();
     }
@@ -115,6 +120,7 @@ pub fn unregister_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguratio
             ip: conf.clone().sip_server,
             port: conf.clone().sip_port,
             bytes: sip.unwrap().to_string().as_bytes().to_vec(),
+            exit: false,
         })
         .unwrap();
     }

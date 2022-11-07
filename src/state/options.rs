@@ -20,8 +20,8 @@ pub struct SipOptions {
     pub tag_remote: Option<String>,
 }
 
-pub struct SelfConfiguration<'a> {
-    pub ip: &'a IpAddr,
+pub struct SelfConfiguration {
+    pub ip: IpAddr,
     pub verbosity: Verbosity,
     pub flow: Direction,
 }

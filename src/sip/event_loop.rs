@@ -1,0 +1,113 @@
+use rsip::SipMessage;
+use std::{
+    net::UdpSocket,
+    sync::{Arc, Mutex},
+};
+use tokio::task::JoinHandle;
+
+use crate::{
+    config::JSONConfiguration,
+    flow::{
+        inbound::{process_request_inbound, process_response_inbound},
+        outbound::{process_request_outbound, process_response_outbound},
+    },
+    log::{flog, MTLogs},
+    processor::message::setup_processor,
+    startup::registration::register_ua,
+    state::{
+        dialogs::{Dialogs, Direction},
+        options::SelfConfiguration,
+    },
+    transmissions::sockets::{peek, receive, send, SocketV4},
+};
+use std::time::Duration;
+
+pub fn sip_event_loop(
+    c_conf: &JSONConfiguration,
+    c_dialog_state: &Arc<Mutex<Dialogs>>,
+    c_settings: &Arc<Mutex<SelfConfiguration>>,
+    c_logs: &MTLogs,
+) -> JoinHandle<()> {
+    let conf = c_conf.clone();
+    let state: Arc<Mutex<Dialogs>> = c_dialog_state.clone();
+    let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(c_settings);
+    let logs = Arc::clone(c_logs);
+
+    tokio::spawn(async move {
+        let dialog_state = state;
+        let (stx, srx) = setup_processor::<SocketV4>();
+
+        let mut settings = arc_settings.lock().unwrap();
+        {
+            let mut socket = UdpSocket::bind(format!("0.0.0.0:{}", 5060)).unwrap();
+            let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
+            socket
+                .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
+                .expect("connect function failed");
+
+            let mut sip_buffer = [0_u8; 65535];
+
+            register_ua(&dialog_state, &conf, &mut settings);
+
+            'thread: loop {
+                // peek on the socket, for pending messages
+                let mut maybe_msg: Option<SipMessage> = None;
+                {
+                    flog(&vec![{ "peek sip_event_loop" }]);
+
+                    let packets_queued = peek(&mut socket, &mut sip_buffer);
+
+                    if packets_queued > 0 {
+                        maybe_msg =
+                            match receive(&mut socket, &mut sip_buffer, &settings.verbosity, &logs)
+                            {
+                                Ok(buf) => Some(buf),
+                                Err(_) => None,
+                            };
+                    }
+                }
+
+                // distribute message on the correct process
+                if let Some(..) = maybe_msg {
+                    let msg = maybe_msg.unwrap();
+                    match settings.flow {
+                        Direction::Inbound => match msg {
+                            rsip::SipMessage::Request(request) => process_request_inbound(
+                                &request,
+                                &conf,
+                                &dialog_state,
+                                &mut settings,
+                            ),
+                            rsip::SipMessage::Response(response) => {
+                                process_response_inbound(&response, &conf, &dialog_state)
+                            }
+                        },
+                        Direction::Outbound => match msg {
+                            rsip::SipMessage::Request(request) => process_request_outbound(
+                                &request,
+                                &conf,
+                                &dialog_state,
+                                &mut settings,
+                            ),
+                            rsip::SipMessage::Response(response) => process_response_outbound(
+                                &response,
+                                &conf,
+                                &dialog_state,
+                                &mut settings,
+                            ),
+                        },
+                    }
+                }
+
+                if let Ok(data) = srx.try_recv() {
+                    flog(&vec![{ &format!("sip:: {:?}", data.exit) }]);
+
+                    if data.exit {
+                        break 'thread;
+                    }
+                    send(&mut socket, &data, &settings.verbosity, &logs);
+                }
+            }
+        }
+    })
+}

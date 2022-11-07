@@ -10,16 +10,13 @@ pub struct SocketV4 {
     pub ip: String,
     pub port: u16,
     pub bytes: Vec<u8>,
+    pub exit: bool,
 }
 
 /// Sends a udp message
 pub fn send(socket: &mut UdpSocket, data: &SocketV4, vrb: &Verbosity, logs: &MTLogs) {
     print_msg("===>".to_string(), vrb, logs);
-    print_msg(
-        String::from_utf8_lossy(&data.bytes).to_string(),
-        vrb,
-        logs,
-    );
+    print_msg(String::from_utf8_lossy(&data.bytes).to_string(), vrb, logs);
 
     socket
         .send_to(&data.bytes, format!("{}:{}", &data.ip, &data.port))

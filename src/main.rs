@@ -24,40 +24,42 @@ mod ui;
 /// Processor
 mod processor;
 
+/// RTP
+//mod rtp;
+
+/// SIP
+mod sip;
+
 use network::get_ipv4;
 use processor::message::{setup_processor, Message};
-use rsip::SipMessage;
-use startup::registration::register_ua;
 use state::options::{SelfConfiguration, Verbosity};
 use std::collections::VecDeque;
 use std::io;
-use std::net::UdpSocket;
 use std::sync::mpsc::{self};
 use std::sync::{Arc, Mutex};
 use std::thread::{self};
-use std::time::Duration;
-use transmissions::sockets::{send, SocketV4};
+use transmissions::sockets::SocketV4;
 use ui::menu::builder::build_menu;
 use ui::menu::draw::{menu_and_refresh, send_menu_commands};
 
-use crate::flow::inbound::{process_request_inbound, process_response_inbound};
-use crate::transmissions::sockets::{peek, receive};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use flow::outbound::{process_request_outbound, process_response_outbound};
-use log::MTLogs;
+use log::{flog, MTLogs};
 use state::dialogs::{Dialogs, Direction};
 use tui::backend::CrosstermBackend;
 use tui::widgets::{Block, Borders};
 use tui::Terminal;
 use ui::app::App;
 
-fn main() -> Result<(), io::Error> {
+#[tokio::main]
+async fn main() -> Result<(), io::Error> {
     let logs: MTLogs = Arc::new(Mutex::from(VecDeque::new()));
-    let thread_logs: MTLogs = Arc::clone(&logs);
+    let sip_logs: MTLogs = Arc::clone(&logs);
+    let rtp_logs: MTLogs = Arc::clone(&logs);
+    let just_logs: MTLogs = Arc::clone(&logs);
 
     let conf = config::read("./config.json").unwrap();
 
@@ -66,10 +68,10 @@ fn main() -> Result<(), io::Error> {
         Err(why) => panic!("{}", why),
     };
 
-    log::slog(&format!("IP found {} :", ip), &logs);
+    flog(&vec![{ &format!("IP found {}", ip) }]);
 
-    let (tx, rx) = setup_processor::<Message>();
-    let (stx, srx) = setup_processor::<SocketV4>();
+    let (stx, _srx) = setup_processor::<SocketV4>();
+    let (rtx, _rrx) = setup_processor::<SocketV4>();
 
     logs.lock().unwrap().push_back(format!(
         "<{:?}> [{}] - {:?}",
@@ -90,112 +92,62 @@ fn main() -> Result<(), io::Error> {
         f.render_widget(block, size);
     })?;
 
-    let builder = thread::Builder::new();
-    let mut socket = UdpSocket::bind(format!("0.0.0.0:{}", 5060)).unwrap();
+    // let mut rtp_socket = UdpSocket::bind(format!("0.0.0.0:{}", 49152)).unwrap();
 
-    let _handler = builder
-        .spawn(move || {
-            let mut settings = SelfConfiguration {
-                flow: Direction::Inbound,
-                verbosity: Verbosity::Minimal,
-                ip: &ip,
-            };
+    let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new(stx, rtx)));
+    let (tx, rx) = setup_processor::<Message>();
+    let action_menu = Arc::new(build_menu());
 
-            let mut buffer = [0_u8; 65535];
+    let arc_settings = Arc::new(Mutex::new(SelfConfiguration {
+        flow: Direction::Inbound,
+        verbosity: Verbosity::Minimal,
+        ip: ip,
+    }));
 
-            let dialog_state: Arc<Mutex<Dialogs>> = Arc::new(Mutex::new(Dialogs::new(stx)));
-            {
-                let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
+    sip::event_loop::sip_event_loop(&conf, &dialog_state, &arc_settings, &sip_logs);
 
-                socket
-                    .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
-                    .expect("connect function failed");
-            }
+    tokio::spawn(async move {
+        'thread: loop {
+            // send a command for processing
+            if let Ok(processable_object) = rx.try_recv() {
+                log::slog(
+                    format!("received input, {:?}", processable_object.bind).as_str(),
+                    &logs,
+                );
+                let mut settings = arc_settings.lock().unwrap();
 
-            register_ua(&dialog_state, &conf, &mut settings);
-            let action_menu = Arc::new(build_menu());
+                if send_menu_commands(
+                    &processable_object,
+                    &dialog_state,
+                    &action_menu,
+                    &conf,
+                    &mut settings,
+                    &ip,
+                    &logs,
+                ) {
+                    flog(&vec![{ "got exit ui" }]);
 
-            'thread: loop {
-                // peek on the socket, for pending messages
-                let mut maybe_msg: Option<SipMessage> = None;
-                {
-                    let packets_queued = peek(&mut socket, &mut buffer);
-
-                    if packets_queued > 0 {
-                        maybe_msg = match receive(
-                            &mut socket,
-                            &mut buffer,
-                            &settings.verbosity,
-                            &thread_logs,
-                        ) {
-                            Ok(buf) => Some(buf),
-                            Err(_) => None,
-                        };
-                    }
-                }
-
-                // distribute message on the correct process
-                if let Some(..) = maybe_msg {
-                    let msg = maybe_msg.unwrap();
-                    match settings.flow {
-                        Direction::Inbound => match msg {
-                            rsip::SipMessage::Request(request) => process_request_inbound(
-                                &request,
-                                &conf,
-                                &dialog_state,
-                                &mut settings,
-                            ),
-                            rsip::SipMessage::Response(response) => {
-                                process_response_inbound(&response, &conf, &dialog_state)
-                            }
-                        },
-                        Direction::Outbound => match msg {
-                            rsip::SipMessage::Request(request) => process_request_outbound(
-                                &request,
-                                &conf,
-                                &dialog_state,
-                                &mut settings,
-                            ),
-                            rsip::SipMessage::Response(response) => process_response_outbound(
-                                &response,
-                                &conf,
-                                &dialog_state,
-                                &mut settings,
-                            ),
-                        },
-                    }
-                }
-
-                // send a command for processing
-                if let Ok(processable_object) = rx.try_recv() {
-                    log::slog(
-                        format!("received input, {:?}", processable_object.bind).as_str(),
-                        &thread_logs,
-                    );
-
-                    if send_menu_commands(
-                        &processable_object,
-                        &dialog_state,
-                        &action_menu,
-                        &conf,
-                        &mut settings,
-                        &ip,
-                        &thread_logs,
-                    ) {
-                        break 'thread;
-                    }
-                }
-
-                if let Ok(data) = srx.try_recv() {
-                    send(&mut socket, &data, &settings.verbosity, &thread_logs);
+                    let sender = dialog_state.lock().unwrap();
+                    sender
+                        .sip
+                        .lock()
+                        .unwrap()
+                        .send(SocketV4 {
+                            ip: "".to_string(),
+                            port: 111,
+                            bytes: vec![],
+                            exit: true,
+                        })
+                        .unwrap();
+                    break 'thread;
                 }
             }
-        })
-        .unwrap();
+        }
+    });
 
     // create app and run it
     let app: App = App::default();
-    let res = menu_and_refresh(&mut terminal, &tx, &logs, app);
+    let res = menu_and_refresh(&mut terminal, &tx, &just_logs, app);
 
     // restore terminal
     disable_raw_mode()?;

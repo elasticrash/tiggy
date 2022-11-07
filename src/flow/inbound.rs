@@ -50,6 +50,7 @@ pub fn process_request_inbound(
                 .to_string()
                 .as_bytes()
                 .to_vec(),
+                exit: false,
             })
             .unwrap();
         }
@@ -63,6 +64,7 @@ pub fn process_request_inbound(
                     .to_string()
                     .as_bytes()
                     .to_vec(),
+                exit: false,
             })
             .unwrap();
             thread::sleep(Duration::from_secs(1));
@@ -79,6 +81,7 @@ pub fn process_request_inbound(
                 .to_string()
                 .as_bytes()
                 .to_vec(),
+                exit: false,
             })
             .unwrap();
         }
@@ -98,6 +101,7 @@ pub fn process_request_inbound(
                 .to_string()
                 .as_bytes()
                 .to_vec(),
+                exit: false,
             })
             .unwrap();
         }
@@ -152,6 +156,7 @@ pub fn process_response_inbound(
                     ip: conf.clone().sip_server,
                     port: conf.clone().sip_port,
                     bytes: transaction.unwrap().as_bytes().to_vec(),
+                    exit: false,
                 })
                 .unwrap();
             }

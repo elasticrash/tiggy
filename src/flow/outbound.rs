@@ -128,6 +128,7 @@ pub fn outbound_start(
             ip: conf.clone().sip_server,
             port: conf.clone().sip_port,
             bytes: transaction.unwrap().as_bytes().to_vec(),
+            exit: false,
         })
         .unwrap();
     }
@@ -161,6 +162,7 @@ pub fn process_request_outbound(
                 .to_string()
                 .as_bytes()
                 .to_vec(),
+                exit: false,
             })
             .unwrap();
         }
@@ -183,6 +185,7 @@ pub fn process_request_outbound(
                 .to_string()
                 .as_bytes()
                 .to_vec(),
+                exit: false,
             })
             .unwrap();
         }
@@ -238,6 +241,7 @@ pub fn process_response_outbound(
                     ip: conf.clone().sip_server,
                     port: conf.clone().sip_port,
                     bytes: transaction.unwrap().as_bytes().to_vec(),
+                    exit: false,
                 })
                 .unwrap();
             }
@@ -271,6 +275,22 @@ pub fn process_response_outbound(
                         let loop_transaction = transactions.last().unwrap();
                         if loop_transaction.local.is_some() && loop_transaction.remote.is_some() {
                             let hstr = response.clone().to_header().unwrap().to_string();
+                            // let sdp = sdp_rs::SessionDescription::try_from(
+                            //     String::from_utf8_lossy(&response.body).to_string(),
+                            // );
+
+                            // let connection = sdp
+                            //     .clone()
+                            //     .unwrap()
+                            //     .connection
+                            //     .unwrap()
+                            //     .connection_address
+                            //     .numaddr;
+                            // let rtp_port =
+                            //     sdp.unwrap().media_descriptions.first().unwrap().media.port;
+
+                            // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
+
                             let remote_tag = get_remote_tag(&hstr);
                             let now = Utc::now();
 
@@ -347,6 +367,7 @@ pub fn process_response_outbound(
                     ip: conf.clone().sip_server,
                     port: conf.clone().sip_port,
                     bytes: transaction.unwrap().as_bytes().to_vec(),
+                    exit: false,
                 })
                 .unwrap();
             }
