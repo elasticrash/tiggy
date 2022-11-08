@@ -11,8 +11,7 @@ use crate::{
         inbound::{process_request_inbound, process_response_inbound},
         outbound::{process_request_outbound, process_response_outbound},
     },
-    log::{flog, MTLogs},
-    processor::message::setup_processor,
+    slog::{flog, MTLogs},
     startup::registration::register_ua,
     state::{
         dialogs::{Dialogs, Direction},
@@ -35,7 +34,6 @@ pub fn sip_event_loop(
 
     tokio::spawn(async move {
         let dialog_state = state;
-        let (stx, srx) = setup_processor::<SocketV4>();
 
         let mut settings = arc_settings.lock().unwrap();
         {
@@ -99,13 +97,21 @@ pub fn sip_event_loop(
                     }
                 }
 
-                if let Ok(data) = srx.try_recv() {
+                let mut state = dialog_state.lock().unwrap();
+                let channel = state.get_channel().unwrap();
+
+                if let Ok(data) = channel.1.try_recv() {
                     flog(&vec![{ &format!("sip:: {:?}", data.exit) }]);
 
                     if data.exit {
                         break 'thread;
                     }
-                    send(&mut socket, &data, &settings.verbosity, &logs);
+                    send(
+                        &mut socket,
+                        &data.event.unwrap(),
+                        &settings.verbosity,
+                        &logs,
+                    );
                 }
             }
         }

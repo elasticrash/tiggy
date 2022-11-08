@@ -1,22 +1,30 @@
 use crate::{
-    log::{print_msg, MTLogs},
+    slog::{print_msg, MTLogs},
     state::options::Verbosity,
 };
 use rsip::SipMessage;
 use std::{convert::TryFrom, net::UdpSocket};
+use yansi::Paint;
+
+pub struct MpscBase<T> {
+    pub event: Option<T>,
+    pub exit: bool,
+}
 
 /// Bundle Ip, Port and payload for Upd connections into a single struct
 pub struct SocketV4 {
     pub ip: String,
     pub port: u16,
     pub bytes: Vec<u8>,
-    pub exit: bool,
 }
 
 /// Sends a udp message
 pub fn send(socket: &mut UdpSocket, data: &SocketV4, vrb: &Verbosity, logs: &MTLogs) {
-    print_msg("===>".to_string(), vrb, logs);
-    print_msg(String::from_utf8_lossy(&data.bytes).to_string(), vrb, logs);
+    print_msg(
+        Paint::yellow(String::from_utf8_lossy(&data.bytes).to_string()).to_string(),
+        vrb,
+        logs,
+    );
 
     socket
         .send_to(&data.bytes, format!("{}:{}", &data.ip, &data.port))
@@ -35,8 +43,7 @@ pub fn receive(
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];
     let r_message_a = String::from_utf8_lossy(slice);
-    print_msg("<===".to_string(), vrb, logs);
-    print_msg(r_message_a.to_string(), vrb, logs);
+    print_msg(Paint::cyan(r_message_a.to_string()).to_string(), vrb, logs);
 
     SipMessage::try_from(r_message_a.to_string())
 }

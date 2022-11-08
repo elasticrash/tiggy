@@ -6,13 +6,13 @@ use uuid::Uuid;
 
 use crate::{
     config::JSONConfiguration,
-    log::flog,
+    slog::flog,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::{SelfConfiguration, SipOptions},
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::SocketV4,
+    transmissions::sockets::{MpscBase, SocketV4},
 };
 
 /// Preparation for registering the UA,
@@ -86,14 +86,19 @@ pub fn register_ua(
     if let Some(..) = transaction {
         let state = dialog_state.clone();
         let mut locked_state = state.lock().unwrap();
-        let tx = locked_state.get_sender().unwrap();
-        tx.send(SocketV4 {
-            ip: conf.clone().sip_server,
-            port: conf.clone().sip_port,
-            bytes: transaction.unwrap().as_bytes().to_vec(),
-            exit: false,
-        })
-        .unwrap();
+        let channel = locked_state.get_channel().unwrap();
+
+        channel
+            .0
+            .send(MpscBase {
+                event: Some(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: transaction.unwrap().as_bytes().to_vec(),
+                }),
+                exit: false,
+            })
+            .unwrap();
     }
 }
 
@@ -115,13 +120,18 @@ pub fn unregister_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguratio
     if let Some(..) = sip {
         let locked_socket = dialog_state.clone();
         let mut unlocked_socket = locked_socket.lock().unwrap();
-        let tx = unlocked_socket.get_sender().unwrap();
-        tx.send(SocketV4 {
-            ip: conf.clone().sip_server,
-            port: conf.clone().sip_port,
-            bytes: sip.unwrap().to_string().as_bytes().to_vec(),
-            exit: false,
-        })
-        .unwrap();
+        let channel = unlocked_socket.get_channel().unwrap();
+
+        channel
+            .0
+            .send(MpscBase {
+                event: Some(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: sip.unwrap().to_string().as_bytes().to_vec(),
+                }),
+                exit: false,
+            })
+            .unwrap();
     }
 }

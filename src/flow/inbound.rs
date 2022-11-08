@@ -5,7 +5,7 @@ use crate::{
         dialogs::{Dialogs, Direction},
         options::SelfConfiguration,
     },
-    transmissions::sockets::SocketV4,
+    transmissions::sockets::{MpscBase, SocketV4},
 };
 use rsip::{
     header_opt,
@@ -29,7 +29,7 @@ pub fn process_request_inbound(
     settings: &mut SelfConfiguration,
 ) {
     let mut locked_state = state.lock().unwrap();
-    let tx = locked_state.get_sender().unwrap();
+    let channel = locked_state.get_channel().unwrap();
 
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
@@ -37,73 +37,89 @@ pub fn process_request_inbound(
         rsip::Method::Register => {}
         rsip::Method::Ack => {}
         rsip::Method::Bye => {
-            tx.send(SocketV4 {
-                ip: via.uri.host().to_string(),
-                port: 5060,
-                bytes: ok(
-                    conf,
-                    &settings.ip.clone().to_string(),
-                    request,
-                    rsip::Method::Bye,
-                    false,
-                )
-                .to_string()
-                .as_bytes()
-                .to_vec(),
-                exit: false,
-            })
-            .unwrap();
+            channel
+                .0
+                .send(MpscBase {
+                    event: Some(SocketV4 {
+                        ip: via.uri.host().to_string(),
+                        port: 5060,
+                        bytes: ok(
+                            conf,
+                            &settings.ip.clone().to_string(),
+                            request,
+                            rsip::Method::Bye,
+                            false,
+                        )
+                        .to_string()
+                        .as_bytes()
+                        .to_vec(),
+                    }),
+                    exit: false,
+                })
+                .unwrap();
         }
         rsip::Method::Cancel => {}
         rsip::Method::Info => {}
         rsip::Method::Invite => {
-            tx.send(SocketV4 {
-                ip: via.uri.host().to_string(),
-                port: 5060,
-                bytes: trying(conf, &settings.ip.clone().to_string(), request)
-                    .to_string()
-                    .as_bytes()
-                    .to_vec(),
-                exit: false,
-            })
-            .unwrap();
+            channel
+                .0
+                .send(MpscBase {
+                    event: Some(SocketV4 {
+                        ip: via.uri.host().to_string(),
+                        port: 5060,
+                        bytes: trying(conf, &settings.ip.clone().to_string(), request)
+                            .to_string()
+                            .as_bytes()
+                            .to_vec(),
+                    }),
+                    exit: false,
+                })
+                .unwrap();
             thread::sleep(Duration::from_secs(1));
-            tx.send(SocketV4 {
-                ip: via.uri.host().to_string(),
-                port: 5060,
-                bytes: ok(
-                    conf,
-                    &settings.ip.clone().to_string(),
-                    request,
-                    rsip::Method::Invite,
-                    true,
-                )
-                .to_string()
-                .as_bytes()
-                .to_vec(),
-                exit: false,
-            })
-            .unwrap();
+            channel
+                .0
+                .send(MpscBase {
+                    event: Some(SocketV4 {
+                        ip: via.uri.host().to_string(),
+                        port: 5060,
+                        bytes: ok(
+                            conf,
+                            &settings.ip.clone().to_string(),
+                            request,
+                            rsip::Method::Invite,
+                            true,
+                        )
+                        .to_string()
+                        .as_bytes()
+                        .to_vec(),
+                    }),
+                    exit: false,
+                })
+                .unwrap();
         }
         rsip::Method::Message => {}
         rsip::Method::Notify => {}
         rsip::Method::Options => {
-            tx.send(SocketV4 {
-                ip: via.uri.host().to_string(),
-                port: 5060,
-                bytes: ok(
-                    conf,
-                    &settings.ip.clone().to_string(),
-                    request,
-                    rsip::Method::Options,
-                    false,
-                )
-                .to_string()
-                .as_bytes()
-                .to_vec(),
-                exit: false,
-            })
-            .unwrap();
+            channel
+                .0
+                .send(MpscBase {
+                    event: Some(SocketV4 {
+                        ip: via.uri.host().to_string(),
+                        port: 5060,
+                        bytes: ok(
+                            conf,
+                            &settings.ip.clone().to_string(),
+                            request,
+                            rsip::Method::Options,
+                            false,
+                        )
+                        .to_string()
+                        .as_bytes()
+                        .to_vec(),
+                    }),
+                    exit: false,
+                })
+                .unwrap();
         }
         rsip::Method::PRack => {}
         rsip::Method::Publish => {}
@@ -151,14 +167,19 @@ pub fn process_response_inbound(
             if let Some(..) = transaction {
                 let locked_socket = state.clone();
                 let mut unlocked_socket = locked_socket.lock().unwrap();
-                let tx = unlocked_socket.get_sender().unwrap();
-                tx.send(SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                    bytes: transaction.unwrap().as_bytes().to_vec(),
-                    exit: false,
-                })
-                .unwrap();
+                let channel = unlocked_socket.get_channel().unwrap();
+
+                channel
+                    .0
+                    .send(MpscBase {
+                        event: Some(SocketV4 {
+                            ip: conf.clone().sip_server,
+                            port: conf.clone().sip_port,
+                            bytes: transaction.unwrap().as_bytes().to_vec(),
+                        }),
+                        exit: false,
+                    })
+                    .unwrap();
             }
         }
         StatusCode::Trying => {}
