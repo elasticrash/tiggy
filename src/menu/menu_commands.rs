@@ -9,7 +9,6 @@ use crate::{
     config::JSONConfiguration,
     flow::outbound::{outbound_configure, outbound_start},
     processor::message::Message,
-    slog::{self, MTLogs},
     startup::registration::unregister_ua,
     state::{
         dialogs::{Dialogs, Direction},
@@ -23,7 +22,6 @@ pub fn send_menu_commands(
     conf: &JSONConfiguration,
     settings: &mut SelfConfiguration,
     ip: &IpAddr,
-    logs: &MTLogs,
 ) -> bool {
     info!("received command {}", processable_object.bind);
     info!("begging matching");
@@ -53,7 +51,7 @@ pub fn send_menu_commands(
                     if is_string_numeric(o.clone()) {
                         settings.flow = Direction::Outbound;
                         outbound_configure(conf, ip, o, dialog_state);
-                        outbound_start(conf, dialog_state, &settings.verbosity, logs);
+                        outbound_start(conf, dialog_state, &settings.verbosity);
                     }
                 }
                 None => todo!(),
@@ -62,13 +60,9 @@ pub fn send_menu_commands(
         }
         'a' => todo!(),
         _ => {
-            slog::slog(
-                format!(
-                    "{:?}: Invalid Command/Not supported",
-                    processable_object.bind
-                )
-                .as_str(),
-                logs,
+            info!(
+                "{:?}: Invalid Command/Not supported",
+                processable_object.bind
             );
             false
         }

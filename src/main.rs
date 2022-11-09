@@ -34,16 +34,17 @@ mod sip;
 use menu::menu_commands::send_menu_commands;
 use network::get_ipv4;
 use processor::message::{setup_processor, Message, MessageType};
+use rocket::fairing::AdHoc;
 use rocket::response::status;
 use rocket::State;
-use slog::{flog, MTLogs};
 use state::dialogs::{Dialogs, Direction};
 use state::options::{SelfConfiguration, Verbosity};
-use std::collections::VecDeque;
 use std::sync::mpsc::{self, sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
+use std::{thread, time::Duration};
 use transmissions::sockets::SocketV4;
 
+use crate::startup::registration::unregister_ua;
 use crate::transmissions::sockets::MpscBase;
 
 #[macro_use]
@@ -73,9 +74,6 @@ fn toggle_log(tr: &State<SyncSender<Message>>) -> status::Accepted<String> {
 
 #[launch]
 fn rocket() -> _ {
-    let logs: MTLogs = Arc::new(Mutex::from(VecDeque::new()));
-    let sip_logs: MTLogs = Arc::clone(&logs);
-
     let conf = config::read("./config.json").unwrap();
 
     let ip = match get_ipv4() {
@@ -83,7 +81,7 @@ fn rocket() -> _ {
         Err(why) => panic!("{}", why),
     };
 
-    flog(&vec![{ &format!("IP found {}", ip) }]);
+    info!("IP found {}", ip);
 
     let (mtx, mrx) = sync_channel::<Message>(1);
     let (stx, srx) = setup_processor::<MpscBase<SocketV4>>();
@@ -94,6 +92,10 @@ fn rocket() -> _ {
     let dialog_state: Arc<Mutex<Dialogs>> =
         Arc::new(Mutex::new(Dialogs::new((stx, srx), (rtx, rrx))));
 
+    // Needed to unregister the UA on shutdown
+    let exit_config = conf.clone();
+    let exit_state = dialog_state.clone();
+
     let local_conf = SelfConfiguration {
         flow: Direction::Inbound,
         verbosity: Verbosity::Minimal,
@@ -102,7 +104,7 @@ fn rocket() -> _ {
 
     let arc_settings = Arc::new(Mutex::new(local_conf));
 
-    sip::event_loop::sip_event_loop(&conf, &dialog_state, &arc_settings, &sip_logs);
+    sip::event_loop::sip_event_loop(&conf, &dialog_state, &arc_settings);
 
     tokio::spawn(async move {
         'thread: loop {
@@ -117,7 +119,6 @@ fn rocket() -> _ {
                     &conf,
                     &mut settings,
                     &ip,
-                    &logs,
                 ) {
                     info!("preparing to exit");
 
@@ -139,4 +140,11 @@ fn rocket() -> _ {
     rocket::build()
         .manage(mtx)
         .mount("/", routes![make_call, toggle_log])
+        .attach(AdHoc::on_shutdown("Shutdown Printer", |_| {
+            Box::pin(async move {
+                info!("sending unregister command");
+                unregister_ua(&exit_state, &exit_config);
+                thread::sleep(Duration::from_secs(1));
+            })
+        }))
 }

@@ -1,23 +1,13 @@
 use std::{
-    collections::VecDeque,
     fs::{File, OpenOptions},
     io::prelude::*,
     path::Path,
-    sync::{Arc, Mutex},
 };
 
 use crate::state::options::Verbosity;
 
-pub type MTLogs = Arc<Mutex<VecDeque<String>>>;
-
-/// Pushes log into a vector
-pub fn slog(log: &str, logs: &MTLogs) {
-    let mut arr = logs.lock().unwrap();
-    arr.push_back(format!("{:?}", log));
-}
-
 /// Logs a Message on the console UI based on verbosity Level
-pub fn print_msg(msg: String, vrb: &Verbosity, logs: &MTLogs) {
+pub fn udp_logger(msg: String, vrb: &Verbosity) {
     let print: Vec<&str> = msg.split("\r\n").collect();
 
     match vrb {
@@ -30,13 +20,13 @@ pub fn print_msg(msg: String, vrb: &Verbosity, logs: &MTLogs) {
         Verbosity::Quiet => {}
     }
     // logs to file
-    flog(&print);
+    file_logger(&print);
 }
 
 /// Logs to a file in detail, easier to see what's going on, the logs on the UI
 /// are basically a gimmick, give or take, this should be opt in, though in the
 /// future
-pub fn flog(print: &Vec<&str>) {
+pub fn file_logger(print: &Vec<&str>) {
     if !Path::new("log.txt").exists() {
         File::create("log.txt").unwrap();
     }
