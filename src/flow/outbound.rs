@@ -2,13 +2,14 @@ use crate::{
     commands::{auth::Auth, helper::get_remote_tag, ok::ok},
     composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
-    log::{print_msg, MTLogs},
+    rtp,
+    slog::{print_msg, MTLogs},
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::SocketV4,
+    transmissions::sockets::{MpscBase, SocketV4},
 };
 
 use chrono::prelude::*;
@@ -122,14 +123,19 @@ pub fn outbound_start(
     if let Some(..) = transaction {
         let state = state.clone();
         let mut locked_state = state.lock().unwrap();
-        let tx = locked_state.get_sender().unwrap();
+        let channel = locked_state.get_sip_channel().unwrap();
 
-        tx.send(SocketV4 {
-            ip: conf.clone().sip_server,
-            port: conf.clone().sip_port,
-            bytes: transaction.unwrap().as_bytes().to_vec(),
-        })
-        .unwrap();
+        channel
+            .0
+            .send(MpscBase {
+                event: Some(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: transaction.unwrap().as_bytes().to_vec(),
+                }),
+                exit: false,
+            })
+            .unwrap();
     }
 }
 
@@ -140,7 +146,7 @@ pub fn process_request_outbound(
     settings: &mut SelfConfiguration,
 ) {
     let mut locked_state = state.lock().unwrap();
-    let tx = locked_state.get_sender().unwrap();
+    let channel = locked_state.get_sip_channel().unwrap();
 
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
@@ -148,21 +154,26 @@ pub fn process_request_outbound(
         Method::Ack => todo!(),
         Method::Bye => {
             settings.flow = Direction::Inbound;
-            tx.send(SocketV4 {
-                ip: via.uri.host().to_string(),
-                port: 5060,
-                bytes: ok(
-                    conf,
-                    &settings.ip.clone().to_string(),
-                    request,
-                    rsip::Method::Bye,
-                    false,
-                )
-                .to_string()
-                .as_bytes()
-                .to_vec(),
-            })
-            .unwrap();
+            channel
+                .0
+                .send(MpscBase {
+                    event: Some(SocketV4 {
+                        ip: via.uri.host().to_string(),
+                        port: 5060,
+                        bytes: ok(
+                            conf,
+                            &settings.ip.clone().to_string(),
+                            request,
+                            rsip::Method::Bye,
+                            false,
+                        )
+                        .to_string()
+                        .as_bytes()
+                        .to_vec(),
+                    }),
+                    exit: false,
+                })
+                .unwrap();
         }
         Method::Cancel => todo!(),
         Method::Info => todo!(),
@@ -170,21 +181,26 @@ pub fn process_request_outbound(
         Method::Message => todo!(),
         Method::Notify => todo!(),
         Method::Options => {
-            tx.send(SocketV4 {
-                ip: via.uri.host().to_string(),
-                port: 5060,
-                bytes: ok(
-                    conf,
-                    &settings.ip.clone().to_string(),
-                    request,
-                    rsip::Method::Options,
-                    false,
-                )
-                .to_string()
-                .as_bytes()
-                .to_vec(),
-            })
-            .unwrap();
+            channel
+                .0
+                .send(MpscBase {
+                    event: Some(SocketV4 {
+                        ip: via.uri.host().to_string(),
+                        port: 5060,
+                        bytes: ok(
+                            conf,
+                            &settings.ip.clone().to_string(),
+                            request,
+                            rsip::Method::Options,
+                            false,
+                        )
+                        .to_string()
+                        .as_bytes()
+                        .to_vec(),
+                    }),
+                    exit: false,
+                })
+                .unwrap();
         }
         Method::PRack => todo!(),
         Method::Publish => todo!(),
@@ -199,6 +215,7 @@ pub fn process_response_outbound(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
+    logs: &MTLogs,
 ) {
     match response.status_code {
         StatusCode::Trying => {}
@@ -232,14 +249,19 @@ pub fn process_response_outbound(
             if let Some(..) = transaction {
                 let state = state.clone();
                 let mut locked_state = state.lock().unwrap();
-                let tx = locked_state.get_sender().unwrap();
+                let channel = locked_state.get_sip_channel().unwrap();
 
-                tx.send(SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                    bytes: transaction.unwrap().as_bytes().to_vec(),
-                })
-                .unwrap();
+                channel
+                    .0
+                    .send(MpscBase {
+                        event: Some(SocketV4 {
+                            ip: conf.clone().sip_server,
+                            port: conf.clone().sip_port,
+                            bytes: transaction.unwrap().as_bytes().to_vec(),
+                        }),
+                        exit: false,
+                    })
+                    .unwrap();
             }
         }
         StatusCode::Ringing => {
@@ -271,6 +293,33 @@ pub fn process_response_outbound(
                         let loop_transaction = transactions.last().unwrap();
                         if loop_transaction.local.is_some() && loop_transaction.remote.is_some() {
                             let hstr = response.clone().to_header().unwrap().to_string();
+
+                            info!("{}", String::from_utf8_lossy(&response.body).to_string());
+                            let sdp = sdp_rs::SessionDescription::try_from(
+                                String::from_utf8_lossy(&response.body).to_string(),
+                            );
+
+                            let connection = sdp
+                                .clone()
+                                .unwrap()
+                                .connection
+                                .unwrap()
+                                .connection_address
+                                .base;
+                            let rtp_port =
+                                sdp.unwrap().media_descriptions.first().unwrap().media.port;
+
+                            // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
+
+                            info!("target rtp located : {:?}:{}", connection, rtp_port);
+                            info!("source rtp located : {:?}:{}", settings.ip, 49152);
+                            rtp::event_loop::rtp_event_loop(
+                                &settings.ip,
+                                49152,
+                                state.clone(),
+                                &logs,
+                            );
+
                             let remote_tag = get_remote_tag(&hstr);
                             let now = Utc::now();
 
@@ -341,14 +390,19 @@ pub fn process_response_outbound(
             if let Some(..) = transaction {
                 let state = state.clone();
                 let mut locked_state = state.lock().unwrap();
-                let tx = locked_state.get_sender().unwrap();
+                let channel = locked_state.get_sip_channel().unwrap();
 
-                tx.send(SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                    bytes: transaction.unwrap().as_bytes().to_vec(),
-                })
-                .unwrap();
+                channel
+                    .0
+                    .send(MpscBase {
+                        event: Some(SocketV4 {
+                            ip: conf.clone().sip_server,
+                            port: conf.clone().sip_port,
+                            bytes: transaction.unwrap().as_bytes().to_vec(),
+                        }),
+                        exit: false,
+                    })
+                    .unwrap();
             }
         }
         _ => todo!(),

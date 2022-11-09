@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    net::IpAddr,
+    sync::{Arc, Mutex},
+};
 
 use chrono::prelude::*;
 use rsip::SipMessage;
@@ -6,21 +9,18 @@ use uuid::Uuid;
 
 use crate::{
     config::JSONConfiguration,
+    slog::flog,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
-        options::{SelfConfiguration, SipOptions},
+        options::SipOptions,
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::SocketV4,
+    transmissions::sockets::{MpscBase, SocketV4},
 };
 
 /// Preparation for registering the UA,
 /// as well as sending the first unauthorized message
-pub fn register_ua(
-    dialog_state: &Arc<Mutex<Dialogs>>,
-    conf: &JSONConfiguration,
-    settings: &mut SelfConfiguration,
-) {
+pub fn register_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration, ip: &IpAddr) {
     let now = Utc::now();
 
     let register = SipOptions {
@@ -34,7 +34,7 @@ pub fn register_ua(
             now.timestamp_millis()
         ),
         extension: conf.extension.to_string(),
-        ip: settings.ip.to_string(),
+        ip: ip.to_string(),
         md5: None,
         sip_port: conf.sip_port.to_string(),
         sip_server: conf.sip_server.to_string(),
@@ -62,7 +62,10 @@ pub fn register_ua(
             time: Local::now(),
         });
 
+        flog(&vec![{ &format!("register found {}", "dg.time") }]);
+
         for dg in dialogs.iter_mut() {
+            flog(&vec![{ &format!("dg found {}", dg.time) }]);
             if matches!(dg.diag_type, Direction::Inbound) {
                 let mut transactions = dg.transactions.get_transactions().unwrap();
                 transactions.push(Transaction {
@@ -82,13 +85,19 @@ pub fn register_ua(
     if let Some(..) = transaction {
         let state = dialog_state.clone();
         let mut locked_state = state.lock().unwrap();
-        let tx = locked_state.get_sender().unwrap();
-        tx.send(SocketV4 {
-            ip: conf.clone().sip_server,
-            port: conf.clone().sip_port,
-            bytes: transaction.unwrap().as_bytes().to_vec(),
-        })
-        .unwrap();
+        let channel = locked_state.get_sip_channel().unwrap();
+
+        channel
+            .0
+            .send(MpscBase {
+                event: Some(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: transaction.unwrap().as_bytes().to_vec(),
+                }),
+                exit: false,
+            })
+            .unwrap();
     }
 }
 
@@ -110,12 +119,18 @@ pub fn unregister_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguratio
     if let Some(..) = sip {
         let locked_socket = dialog_state.clone();
         let mut unlocked_socket = locked_socket.lock().unwrap();
-        let tx = unlocked_socket.get_sender().unwrap();
-        tx.send(SocketV4 {
-            ip: conf.clone().sip_server,
-            port: conf.clone().sip_port,
-            bytes: sip.unwrap().to_string().as_bytes().to_vec(),
-        })
-        .unwrap();
+        let channel = unlocked_socket.get_sip_channel().unwrap();
+
+        channel
+            .0
+            .send(MpscBase {
+                event: Some(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: sip.unwrap().to_string().as_bytes().to_vec(),
+                }),
+                exit: false,
+            })
+            .unwrap();
     }
 }

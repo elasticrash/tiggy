@@ -19,15 +19,14 @@ pub fn slog(log: &str, logs: &MTLogs) {
 /// Logs a Message on the console UI based on verbosity Level
 pub fn print_msg(msg: String, vrb: &Verbosity, logs: &MTLogs) {
     let print: Vec<&str> = msg.split("\r\n").collect();
-    let mut arr = logs.lock().unwrap();
 
     match vrb {
         Verbosity::Diagnostic => {
             for line in print.clone() {
-                arr.push_back(format!("{:?}", line));
+                info!("{}", line);
             }
         }
-        Verbosity::Minimal => arr.push_back(format!("{:?}", print[0])),
+        Verbosity::Minimal => info!("{}", print[0]),
         Verbosity::Quiet => {}
     }
     // logs to file

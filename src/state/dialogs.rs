@@ -1,11 +1,14 @@
-use crate::transmissions::sockets::SocketV4;
+use crate::transmissions::sockets::{MpscBase, SocketV4};
 
 use super::transactions::Transaction;
 use chrono::prelude::*;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    sync::{mpsc::Sender, Arc, Mutex, MutexGuard, PoisonError},
+    sync::{
+        mpsc::{Receiver, Sender},
+        Arc, Mutex, MutexGuard, PoisonError,
+    },
 };
 /// SIP dialog
 pub struct Dialog {
@@ -34,7 +37,8 @@ impl Display for Direction {
 /// Collection of Dialogs
 pub struct Dialogs {
     pub state: Arc<Mutex<Vec<Dialog>>>,
-    pub sender: Arc<Mutex<Sender<SocketV4>>>,
+    pub sip: Arc<Mutex<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>>,
+    pub rtp: Arc<Mutex<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>>,
 }
 
 impl Display for Dialog {
@@ -63,10 +67,14 @@ impl<T> From<PoisonError<T>> for DialogsLockError {
 }
 
 impl Dialogs {
-    pub fn new(rs: Sender<SocketV4>) -> Dialogs {
+    pub fn new(
+        (s_a, r_a): (Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>),
+        (s_b, r_b): (Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>),
+    ) -> Dialogs {
         Dialogs {
             state: Arc::new(Mutex::new(vec![])),
-            sender: Arc::new(Mutex::new(rs)),
+            sip: Arc::new(Mutex::new((s_a, r_a))),
+            rtp: Arc::new(Mutex::new((s_b, r_b))),
         }
     }
 
@@ -74,8 +82,22 @@ impl Dialogs {
         Ok(self.state.lock()?)
     }
 
-    pub fn get_sender(&mut self) -> Result<MutexGuard<Sender<SocketV4>>, DialogsLockError> {
-        Ok(self.sender.lock()?)
+    pub fn get_sip_channel(
+        &mut self,
+    ) -> Result<
+        MutexGuard<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>,
+        DialogsLockError,
+    > {
+        Ok(self.sip.lock()?)
+    }
+
+    pub fn get_rtp_channel(
+        &mut self,
+    ) -> Result<
+        MutexGuard<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>,
+        DialogsLockError,
+    > {
+        Ok(self.rtp.lock()?)
     }
 }
 
