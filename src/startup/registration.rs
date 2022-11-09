@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     config::JSONConfiguration,
-    slog::flog,
+    slog::file_logger,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::SipOptions,
@@ -62,10 +62,10 @@ pub fn register_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration,
             time: Local::now(),
         });
 
-        flog(&vec![{ &format!("register found {}", "dg.time") }]);
+        file_logger(&vec![{ &format!("register found {}", "dg.time") }]);
 
         for dg in dialogs.iter_mut() {
-            flog(&vec![{ &format!("dg found {}", dg.time) }]);
+            file_logger(&vec![{ &format!("dg found {}", dg.time) }]);
             if matches!(dg.diag_type, Direction::Inbound) {
                 let mut transactions = dg.transactions.get_transactions().unwrap();
                 transactions.push(Transaction {

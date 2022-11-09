@@ -3,7 +3,7 @@ use crate::{
     composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
     rtp,
-    slog::{print_msg, MTLogs},
+    slog::udp_logger,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
         options::{SelfConfiguration, SipOptions, Verbosity},
@@ -89,27 +89,21 @@ pub fn outbound_configure(
 
 /// Sends the Intial invite for an outbound call
 // TODO pass identifier for the call
-pub fn outbound_start(
-    conf: &JSONConfiguration,
-    state: &Arc<Mutex<Dialogs>>,
-    vrb: &Verbosity,
-    logs: &MTLogs,
-) {
+pub fn outbound_start(conf: &JSONConfiguration, state: &Arc<Mutex<Dialogs>>, vrb: &Verbosity) {
     let mut transaction: Option<String> = None;
     {
         let state: Arc<Mutex<Dialogs>> = state.clone();
         let mut locked_state = state.lock().unwrap();
         let mut dialogs = locked_state.get_dialogs().unwrap();
-        print_msg(format!("number of dialogs {}: ", dialogs.len()), vrb, logs);
+        info!("number of dialogs {}: ", dialogs.len());
 
         for dg in dialogs.iter_mut().rev() {
             if matches!(dg.diag_type, Direction::Outbound) {
                 let mut transactions = dg.transactions.get_transactions().unwrap();
 
-                print_msg(
+                udp_logger(
                     format!("number of transactions {}: ", transactions.len()),
                     vrb,
-                    logs,
                 );
 
                 let mut loop_transaction = transactions.last_mut().unwrap();
@@ -215,7 +209,6 @@ pub fn process_response_outbound(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
-    logs: &MTLogs,
 ) {
     match response.status_code {
         StatusCode::Trying => {}
@@ -313,12 +306,7 @@ pub fn process_response_outbound(
 
                             info!("target rtp located : {:?}:{}", connection, rtp_port);
                             info!("source rtp located : {:?}:{}", settings.ip, 49152);
-                            rtp::event_loop::rtp_event_loop(
-                                &settings.ip,
-                                49152,
-                                state.clone(),
-                                &logs,
-                            );
+                            rtp::event_loop::rtp_event_loop(&settings.ip, 49152, state.clone());
 
                             let remote_tag = get_remote_tag(&hstr);
                             let now = Utc::now();

@@ -11,7 +11,7 @@ use crate::{
         inbound::{process_request_inbound, process_response_inbound},
         outbound::{process_request_outbound, process_response_outbound},
     },
-    slog::{flog, MTLogs},
+    slog::file_logger,
     startup::registration::register_ua,
     state::{
         dialogs::{Dialogs, Direction},
@@ -25,12 +25,10 @@ pub fn sip_event_loop(
     c_conf: &JSONConfiguration,
     c_dialog_state: &Arc<Mutex<Dialogs>>,
     c_settings: &Arc<Mutex<SelfConfiguration>>,
-    c_logs: &MTLogs,
 ) -> JoinHandle<()> {
     let conf = c_conf.clone();
     let state: Arc<Mutex<Dialogs>> = c_dialog_state.clone();
     let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(c_settings);
-    let logs = Arc::clone(c_logs);
 
     tokio::spawn(async move {
         let dialog_state = state;
@@ -55,12 +53,12 @@ pub fn sip_event_loop(
             // peek on the socket, for pending messages
             let mut maybe_msg: Option<SipMessage> = None;
             {
-                flog(&vec![{ "peek sip_event_loop" }]);
+                file_logger(&vec![{ "peek sip_event_loop" }]);
 
                 let packets_queued = peek(&mut socket, &mut sip_buffer);
 
                 if packets_queued > 0 {
-                    maybe_msg = match receive(&mut socket, &mut sip_buffer, &verbosity, &logs) {
+                    maybe_msg = match receive(&mut socket, &mut sip_buffer, &verbosity) {
                         Ok(buf) => Some(buf),
                         Err(_) => None,
                     };
@@ -96,7 +94,6 @@ pub fn sip_event_loop(
                                 &conf,
                                 &dialog_state,
                                 &mut settings,
-                                &logs
                             ),
                         },
                     }
@@ -110,7 +107,7 @@ pub fn sip_event_loop(
                 if data.exit {
                     break 'thread;
                 }
-                send(&mut socket, &data.event.unwrap(), &verbosity, &logs);
+                send(&mut socket, &data.event.unwrap(), &verbosity);
             }
         }
     })
