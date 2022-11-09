@@ -26,7 +26,7 @@ mod processor;
 mod menu;
 
 /// RTP
-//mod rtp;
+mod rtp;
 
 /// SIP
 mod sip;
@@ -40,10 +40,8 @@ use slog::{flog, MTLogs};
 use state::dialogs::{Dialogs, Direction};
 use state::options::{SelfConfiguration, Verbosity};
 use std::collections::VecDeque;
-use std::num;
 use std::sync::mpsc::{self, sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
-use std::thread::{self};
 use transmissions::sockets::SocketV4;
 
 use crate::transmissions::sockets::MpscBase;
@@ -77,7 +75,6 @@ fn toggle_log(tr: &State<SyncSender<Message>>) -> status::Accepted<String> {
 fn rocket() -> _ {
     let logs: MTLogs = Arc::new(Mutex::from(VecDeque::new()));
     let sip_logs: MTLogs = Arc::clone(&logs);
-    let rtp_logs: MTLogs = Arc::clone(&logs);
 
     let conf = config::read("./config.json").unwrap();
 

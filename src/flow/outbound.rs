@@ -2,6 +2,7 @@ use crate::{
     commands::{auth::Auth, helper::get_remote_tag, ok::ok},
     composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
+    rtp,
     slog::{print_msg, MTLogs},
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
@@ -214,6 +215,7 @@ pub fn process_response_outbound(
     conf: &JSONConfiguration,
     state: &Arc<Mutex<Dialogs>>,
     settings: &mut SelfConfiguration,
+    logs: &MTLogs,
 ) {
     match response.status_code {
         StatusCode::Trying => {}
@@ -291,21 +293,32 @@ pub fn process_response_outbound(
                         let loop_transaction = transactions.last().unwrap();
                         if loop_transaction.local.is_some() && loop_transaction.remote.is_some() {
                             let hstr = response.clone().to_header().unwrap().to_string();
-                            // let sdp = sdp_rs::SessionDescription::try_from(
-                            //     String::from_utf8_lossy(&response.body).to_string(),
-                            // );
 
-                            // let connection = sdp
-                            //     .clone()
-                            //     .unwrap()
-                            //     .connection
-                            //     .unwrap()
-                            //     .connection_address
-                            //     .numaddr;
-                            // let rtp_port =
-                            //     sdp.unwrap().media_descriptions.first().unwrap().media.port;
+                            info!("{}", String::from_utf8_lossy(&response.body).to_string());
+                            let sdp = sdp_rs::SessionDescription::try_from(
+                                String::from_utf8_lossy(&response.body).to_string(),
+                            );
+
+                            let connection = sdp
+                                .clone()
+                                .unwrap()
+                                .connection
+                                .unwrap()
+                                .connection_address
+                                .base;
+                            let rtp_port =
+                                sdp.unwrap().media_descriptions.first().unwrap().media.port;
 
                             // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
+
+                            info!("target rtp located : {:?}:{}", connection, rtp_port);
+                            info!("source rtp located : {:?}:{}", settings.ip, 49152);
+                            rtp::event_loop::rtp_event_loop(
+                                &settings.ip,
+                                49152,
+                                state.clone(),
+                                &logs,
+                            );
 
                             let remote_tag = get_remote_tag(&hstr);
                             let now = Utc::now();

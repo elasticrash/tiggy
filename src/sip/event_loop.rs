@@ -1,4 +1,3 @@
-use log::info;
 use rsip::SipMessage;
 use std::{
     net::UdpSocket,
@@ -18,7 +17,7 @@ use crate::{
         dialogs::{Dialogs, Direction},
         options::{SelfConfiguration, Verbosity},
     },
-    transmissions::sockets::{peek, receive, send, SocketV4},
+    transmissions::sockets::{peek, receive, send},
 };
 use std::time::Duration;
 
@@ -97,6 +96,7 @@ pub fn sip_event_loop(
                                 &conf,
                                 &dialog_state,
                                 &mut settings,
+                                &logs
                             ),
                         },
                     }
