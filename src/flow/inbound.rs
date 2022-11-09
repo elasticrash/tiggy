@@ -29,7 +29,7 @@ pub fn process_request_inbound(
     settings: &mut SelfConfiguration,
 ) {
     let mut locked_state = state.lock().unwrap();
-    let channel = locked_state.get_channel().unwrap();
+    let channel = locked_state.get_sip_channel().unwrap();
 
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
@@ -167,7 +167,7 @@ pub fn process_response_inbound(
             if let Some(..) = transaction {
                 let locked_socket = state.clone();
                 let mut unlocked_socket = locked_socket.lock().unwrap();
-                let channel = unlocked_socket.get_channel().unwrap();
+                let channel = unlocked_socket.get_sip_channel().unwrap();
 
                 channel
                     .0

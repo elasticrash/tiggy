@@ -40,6 +40,7 @@ use slog::{flog, MTLogs};
 use state::dialogs::{Dialogs, Direction};
 use state::options::{SelfConfiguration, Verbosity};
 use std::collections::VecDeque;
+use std::num;
 use std::sync::mpsc::{self, sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self};
@@ -52,13 +53,16 @@ extern crate rocket;
 
 #[post("/call/<number>")]
 fn make_call(tr: &State<SyncSender<Message>>, number: &str) -> status::Accepted<String> {
-    info!("sending dial command with {}", )
-    tr.try_send(Message::new(
+    info!("sending dial command with {}", number);
+    let receipt = tr.try_send(Message::new(
         MessageType::MenuCommand,
         'd',
         Some(number.to_string()),
-    ))
-    .unwrap();
+    ));
+    match receipt {
+        Ok(_) => info!("command send"),
+        Err(err) => error!("{:?}", err),
+    };
     status::Accepted(Some(format!("number: '{}'", number)))
 }
 
@@ -93,11 +97,13 @@ fn rocket() -> _ {
     let dialog_state: Arc<Mutex<Dialogs>> =
         Arc::new(Mutex::new(Dialogs::new((stx, srx), (rtx, rrx))));
 
-    let arc_settings = Arc::new(Mutex::new(SelfConfiguration {
+    let local_conf = SelfConfiguration {
         flow: Direction::Inbound,
         verbosity: Verbosity::Minimal,
         ip: ip,
-    }));
+    };
+
+    let arc_settings = Arc::new(Mutex::new(local_conf));
 
     sip::event_loop::sip_event_loop(&conf, &dialog_state, &arc_settings, &sip_logs);
 
@@ -105,7 +111,7 @@ fn rocket() -> _ {
         'thread: loop {
             // send a command for processing
             if let Ok(processable_object) = mrx.try_recv() {
-               info!("received input, {:?}", processable_object.bind);
+                info!("command received");
                 let mut settings = arc_settings.lock().unwrap();
 
                 if send_menu_commands(
@@ -116,8 +122,10 @@ fn rocket() -> _ {
                     &ip,
                     &logs,
                 ) {
+                    info!("preparing to exit");
+
                     let mut state = dialog_state.lock().unwrap();
-                    let channel = state.get_channel().unwrap();
+                    let channel = state.get_sip_channel().unwrap();
                     channel
                         .0
                         .send(MpscBase {

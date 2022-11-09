@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    net::IpAddr,
+    sync::{Arc, Mutex},
+};
 
 use chrono::prelude::*;
 use rsip::SipMessage;
@@ -9,7 +12,7 @@ use crate::{
     slog::flog,
     state::{
         dialogs::{Dialog, Dialogs, Direction, Transactions},
-        options::{SelfConfiguration, SipOptions},
+        options::SipOptions,
         transactions::{Transaction, TransactionType},
     },
     transmissions::sockets::{MpscBase, SocketV4},
@@ -17,11 +20,7 @@ use crate::{
 
 /// Preparation for registering the UA,
 /// as well as sending the first unauthorized message
-pub fn register_ua(
-    dialog_state: &Arc<Mutex<Dialogs>>,
-    conf: &JSONConfiguration,
-    settings: &mut SelfConfiguration,
-) {
+pub fn register_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration, ip: &IpAddr) {
     let now = Utc::now();
 
     let register = SipOptions {
@@ -35,7 +34,7 @@ pub fn register_ua(
             now.timestamp_millis()
         ),
         extension: conf.extension.to_string(),
-        ip: settings.ip.to_string(),
+        ip: ip.to_string(),
         md5: None,
         sip_port: conf.sip_port.to_string(),
         sip_server: conf.sip_server.to_string(),
@@ -86,7 +85,7 @@ pub fn register_ua(
     if let Some(..) = transaction {
         let state = dialog_state.clone();
         let mut locked_state = state.lock().unwrap();
-        let channel = locked_state.get_channel().unwrap();
+        let channel = locked_state.get_sip_channel().unwrap();
 
         channel
             .0
@@ -120,7 +119,7 @@ pub fn unregister_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguratio
     if let Some(..) = sip {
         let locked_socket = dialog_state.clone();
         let mut unlocked_socket = locked_socket.lock().unwrap();
-        let channel = unlocked_socket.get_channel().unwrap();
+        let channel = unlocked_socket.get_sip_channel().unwrap();
 
         channel
             .0

@@ -43,7 +43,7 @@ pub fn receive(
     let (amt, _src) = socket.recv_from(buffer).unwrap();
     let slice = &mut buffer[..amt];
     let r_message_a = String::from_utf8_lossy(slice);
-    print_msg(Paint::cyan(r_message_a.to_string()).to_string(), vrb, logs);
+    print_msg(Paint::green(r_message_a.to_string()).to_string(), vrb, logs);
 
     SipMessage::try_from(r_message_a.to_string())
 }

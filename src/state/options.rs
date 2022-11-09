@@ -26,6 +26,7 @@ pub struct SelfConfiguration {
     pub flow: Direction,
 }
 
+#[derive(Clone)]
 pub enum Verbosity {
     Diagnostic,
     Minimal,

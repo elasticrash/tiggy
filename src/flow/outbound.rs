@@ -122,7 +122,7 @@ pub fn outbound_start(
     if let Some(..) = transaction {
         let state = state.clone();
         let mut locked_state = state.lock().unwrap();
-        let channel = locked_state.get_channel().unwrap();
+        let channel = locked_state.get_sip_channel().unwrap();
 
         channel
             .0
@@ -145,7 +145,7 @@ pub fn process_request_outbound(
     settings: &mut SelfConfiguration,
 ) {
     let mut locked_state = state.lock().unwrap();
-    let channel = locked_state.get_channel().unwrap();
+    let channel = locked_state.get_sip_channel().unwrap();
 
     let via: Via = request.via_header().unwrap().typed().unwrap();
 
@@ -247,7 +247,7 @@ pub fn process_response_outbound(
             if let Some(..) = transaction {
                 let state = state.clone();
                 let mut locked_state = state.lock().unwrap();
-                let channel = locked_state.get_channel().unwrap();
+                let channel = locked_state.get_sip_channel().unwrap();
 
                 channel
                     .0
@@ -377,7 +377,7 @@ pub fn process_response_outbound(
             if let Some(..) = transaction {
                 let state = state.clone();
                 let mut locked_state = state.lock().unwrap();
-                let channel = locked_state.get_channel().unwrap();
+                let channel = locked_state.get_sip_channel().unwrap();
 
                 channel
                     .0

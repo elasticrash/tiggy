@@ -82,13 +82,22 @@ impl Dialogs {
         Ok(self.state.lock()?)
     }
 
-    pub fn get_channel(
+    pub fn get_sip_channel(
         &mut self,
     ) -> Result<
         MutexGuard<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>,
         DialogsLockError,
     > {
         Ok(self.sip.lock()?)
+    }
+
+    pub fn get_rtp_channel(
+        &mut self,
+    ) -> Result<
+        MutexGuard<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>,
+        DialogsLockError,
+    > {
+        Ok(self.rtp.lock()?)
     }
 }
 

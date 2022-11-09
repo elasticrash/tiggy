@@ -3,11 +3,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use log::info;
+
 use crate::{
     config::JSONConfiguration,
     flow::outbound::{outbound_configure, outbound_start},
     processor::message::Message,
-    slog::{MTLogs, self},
+    slog::{self, MTLogs},
     startup::registration::unregister_ua,
     state::{
         dialogs::{Dialogs, Direction},
@@ -23,6 +25,8 @@ pub fn send_menu_commands(
     ip: &IpAddr,
     logs: &MTLogs,
 ) -> bool {
+    info!("received command {}", processable_object.bind);
+    info!("begging matching");
     match processable_object.bind {
         'u' => false,
         'x' => {
@@ -44,6 +48,8 @@ pub fn send_menu_commands(
         'd' => {
             match &processable_object.content {
                 Some(o) => {
+                    info!("checking dial command");
+
                     if is_string_numeric(o.clone()) {
                         settings.flow = Direction::Outbound;
                         outbound_configure(conf, ip, o, dialog_state);
