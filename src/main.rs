@@ -31,19 +31,23 @@ mod rtp;
 /// SIP
 mod sip;
 
+///PCAP
+mod pcap;
+
 use menu::menu_commands::send_menu_commands;
 use network::get_ipv4;
 use processor::message::{setup_processor, Message, MessageType};
 use rocket::fairing::AdHoc;
 use rocket::response::status;
 use rocket::State;
-use state::dialogs::{Dialogs, Direction};
+use state::dialogs::{Dialogs, Direction, UdpCommand};
 use state::options::{SelfConfiguration, Verbosity};
 use std::sync::mpsc::{self, sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::{thread, time::Duration};
-use transmissions::sockets::SocketV4;
+use uuid::Uuid;
 
+use crate::pcap::capture;
 use crate::startup::registration::unregister_ua;
 use crate::transmissions::sockets::MpscBase;
 
@@ -76,18 +80,16 @@ fn toggle_log(tr: &State<SyncSender<Message>>) -> status::Accepted<String> {
 fn rocket() -> _ {
     let conf = config::read("./config.json").unwrap();
 
-    let ip = match get_ipv4() {
+    let interface = match get_ipv4() {
         Ok(ipv4) => ipv4,
         Err(why) => panic!("{}", why),
     };
 
-    info!("IP found {}", ip);
+    let ip = interface.addr.ip();
 
     let (mtx, mrx) = sync_channel::<Message>(1);
-    let (stx, srx) = setup_processor::<MpscBase<SocketV4>>();
-    let (rtx, rrx) = setup_processor::<MpscBase<SocketV4>>();
-
-    info!("Using: {}", ip);
+    let (stx, srx) = setup_processor::<UdpCommand>();
+    let (rtx, rrx) = setup_processor::<UdpCommand>();
 
     let dialog_state: Arc<Mutex<Dialogs>> =
         Arc::new(Mutex::new(Dialogs::new((stx, srx), (rtx, rrx))));
@@ -96,10 +98,12 @@ fn rocket() -> _ {
     let exit_config = conf.clone();
     let exit_state = dialog_state.clone();
 
+    let pcap_conf = conf.clone();
+
     let local_conf = SelfConfiguration {
         flow: Direction::Inbound,
         verbosity: Verbosity::Minimal,
-        ip: ip,
+        ip,
     };
 
     let arc_settings = Arc::new(Mutex::new(local_conf));
@@ -135,6 +139,10 @@ fn rocket() -> _ {
                 }
             }
         }
+    });
+
+    tokio::spawn(async move {
+        capture(&interface, &Uuid::new_v4(), &pcap_conf.pcap);
     });
 
     rocket::build()

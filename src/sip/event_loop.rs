@@ -11,7 +11,6 @@ use crate::{
         inbound::{process_request_inbound, process_response_inbound},
         outbound::{process_request_outbound, process_response_outbound},
     },
-    slog::file_logger,
     startup::registration::register_ua,
     state::{
         dialogs::{Dialogs, Direction},
@@ -39,6 +38,7 @@ pub fn sip_event_loop(
             .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
             .expect("connect function failed");
 
+
         let verbosity: Verbosity;
 
         let mut sip_buffer = [0_u8; 65535];
@@ -53,8 +53,6 @@ pub fn sip_event_loop(
             // peek on the socket, for pending messages
             let mut maybe_msg: Option<SipMessage> = None;
             {
-                file_logger(&vec![{ "peek sip_event_loop" }]);
-
                 let packets_queued = peek(&mut socket, &mut sip_buffer);
 
                 if packets_queued > 0 {

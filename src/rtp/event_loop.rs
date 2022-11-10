@@ -5,7 +5,6 @@ use std::{
 use tokio::task::JoinHandle;
 
 use crate::{
-    slog::file_logger,
     state::{dialogs::Dialogs, options::Verbosity},
     transmissions::sockets::{peek, receive_base, send},
 };
@@ -16,7 +15,7 @@ pub fn rtp_event_loop(
     port: u16,
     dialog_state: Arc<Mutex<Dialogs>>,
 ) -> JoinHandle<()> {
-    let connection = c_connection.clone();
+    let connection = *c_connection;
     tokio::spawn(async move {
         let mut socket = UdpSocket::bind(format!("0.0.0.0:{}", 40024)).unwrap();
         let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
@@ -30,7 +29,6 @@ pub fn rtp_event_loop(
             // peek on the socket, for pending messages
             let mut maybe_msg: Option<Vec<u8>> = None;
             {
-                file_logger(&vec![{ "peek rtp_event_loop" }]);
 
                 let packets_queued = peek(&mut socket, &mut rtp_buffer);
 

@@ -1,5 +1,6 @@
 pub mod event_loop;
 
+#[allow(dead_code)]
 pub enum RtpType {
     Pcmu, // 0
     Pcma, // 8
@@ -7,6 +8,7 @@ pub enum RtpType {
     Unknown,
 }
 
+#[allow(dead_code)]
 impl RtpType {
     pub fn new(val: u8) -> Self {
         match val {
@@ -17,7 +19,7 @@ impl RtpType {
         }
     }
 }
-
+#[allow(dead_code)]
 pub struct RtpPacket {
     pub version: u8,
     pub padding: u8,

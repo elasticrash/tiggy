@@ -1,7 +1,7 @@
-use std::net::IpAddr;
+use if_addrs::Interface;
 
 /// Iterates through all the available interfaces and pick the first IPV4
-pub fn get_ipv4() -> Result<IpAddr, String> {
+pub fn get_ipv4() -> Result<Interface, String> {
     let is_there_an_ipv4 = if_addrs::get_if_addrs()
         .unwrap()
         .into_iter()
@@ -12,5 +12,5 @@ pub fn get_ipv4() -> Result<IpAddr, String> {
         None => return Err("No IP V4 found".to_string()),
     };
 
-    Ok(interface.addr.ip())
+    Ok(interface)
 }

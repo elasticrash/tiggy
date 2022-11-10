@@ -18,9 +18,13 @@ pub fn udp_logger(msg: String, vrb: &Verbosity) {
         }
         Verbosity::Minimal => info!("{}", print[0]),
         Verbosity::Quiet => {}
+        Verbosity::Extreme => {
+            for line in print.clone() {
+                info!("{}", line);
+            }
+            file_logger(&print);
+        }
     }
-    // logs to file
-    file_logger(&print);
 }
 
 /// Logs to a file in detail, easier to see what's going on, the logs on the UI

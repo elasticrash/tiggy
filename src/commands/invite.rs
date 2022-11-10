@@ -72,7 +72,7 @@ impl SipOptions {
 
 impl SipOptions {
     pub fn push_auth_to_invite(&self) -> SipMessage {
-        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
 
         headers.push(rsip::headers::ContentType::from("application/sdp").into());
 

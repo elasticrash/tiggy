@@ -37,8 +37,8 @@ impl Display for Direction {
 /// Collection of Dialogs
 pub struct Dialogs {
     pub state: Arc<Mutex<Vec<Dialog>>>,
-    pub sip: Arc<Mutex<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>>,
-    pub rtp: Arc<Mutex<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>>,
+    pub sip: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
+    pub rtp: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
 }
 
 impl Display for Dialog {
@@ -66,10 +66,13 @@ impl<T> From<PoisonError<T>> for DialogsLockError {
     }
 }
 
+pub type UdpCommand = MpscBase<SocketV4>;
+type SRUdpCommand = (Sender<UdpCommand>, Receiver<UdpCommand>);
+
 impl Dialogs {
     pub fn new(
-        (s_a, r_a): (Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>),
-        (s_b, r_b): (Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>),
+        (s_a, r_a): (Sender<UdpCommand>, Receiver<UdpCommand>),
+        (s_b, r_b): (Sender<UdpCommand>, Receiver<UdpCommand>),
     ) -> Dialogs {
         Dialogs {
             state: Arc::new(Mutex::new(vec![])),
@@ -82,21 +85,11 @@ impl Dialogs {
         Ok(self.state.lock()?)
     }
 
-    pub fn get_sip_channel(
-        &mut self,
-    ) -> Result<
-        MutexGuard<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>,
-        DialogsLockError,
-    > {
+    pub fn get_sip_channel(&mut self) -> Result<MutexGuard<SRUdpCommand>, DialogsLockError> {
         Ok(self.sip.lock()?)
     }
 
-    pub fn get_rtp_channel(
-        &mut self,
-    ) -> Result<
-        MutexGuard<(Sender<MpscBase<SocketV4>>, Receiver<MpscBase<SocketV4>>)>,
-        DialogsLockError,
-    > {
+    pub fn get_rtp_channel(&mut self) -> Result<MutexGuard<SRUdpCommand>, DialogsLockError> {
         Ok(self.rtp.lock()?)
     }
 }

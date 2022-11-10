@@ -10,6 +10,7 @@ pub struct JSONConfiguration {
     pub sip_server: String,
     pub sip_port: u16,
     pub extension: String,
+    pub pcap: Option<String>,
 }
 
 pub fn read(filename: &str) -> serde_json::Result<JSONConfiguration> {

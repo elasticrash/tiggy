@@ -61,8 +61,15 @@ impl SipOptions {
     }
 
     pub fn unregister(&self) -> SipMessage {
-        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(true);
         headers.push(rsip::headers::Expires::from(0).into());
+        headers.push(
+            rsip::typed::CSeq {
+                seq: 3,
+                method: rsip::Method::Register,
+            }
+            .into(),
+        );
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,
             uri: rsip::Uri {
@@ -86,7 +93,7 @@ impl SipOptions {
 
 impl SipOptions {
     pub fn push_auth_to_register(&self) -> SipMessage {
-        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone();
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
 
         headers.push(
             rsip::typed::Authorization {

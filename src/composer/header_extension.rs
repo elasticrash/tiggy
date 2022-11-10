@@ -29,11 +29,11 @@ impl CustomHeaderExtension for Headers {
 }
 
 pub trait PartialHeaderClone {
-    fn partial_header_clone(&self) -> Headers;
+    fn partial_header_clone(&self, skip_cseq: bool) -> Headers;
 }
 
 impl PartialHeaderClone for SipMessage {
-    fn partial_header_clone(&self) -> Headers {
+    fn partial_header_clone(&self, skip_cseq: bool) -> Headers {
         let mut headers: Headers = Default::default();
         headers.push(self.via_header().unwrap().clone().into());
         headers.push(self.max_forwards_header().unwrap().clone().into());
@@ -43,15 +43,17 @@ impl PartialHeaderClone for SipMessage {
         headers.push(self.call_id_header().unwrap().clone().into());
         headers.push(self.user_agent_header().unwrap().clone().into());
 
-        let cseq = self.cseq_header().unwrap().typed().unwrap();
+        if !skip_cseq {
+            let cseq = self.cseq_header().unwrap().typed().unwrap();
 
-        headers.push(
-            rsip::typed::CSeq {
-                seq: cseq.seq + 1,
-                method: cseq.method,
-            }
-            .into(),
-        );
+            headers.push(
+                rsip::typed::CSeq {
+                    seq: cseq.seq + 1,
+                    method: cseq.method,
+                }
+                .into(),
+            );
+        }
 
         headers.push(
             rsip::headers::Allow::from(

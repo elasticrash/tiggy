@@ -26,8 +26,10 @@ pub struct SelfConfiguration {
     pub flow: Direction,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub enum Verbosity {
+    Extreme,
     Diagnostic,
     Minimal,
     Quiet,
