@@ -109,6 +109,7 @@ pub fn unregister_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguratio
             let mut transactions = dg.transactions.get_transactions().unwrap();
             let transaction = transactions.first_mut().unwrap();
             sip = Some(transaction.object.unregister());
+            transaction.local = sip.clone();
         }
     }
 

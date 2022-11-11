@@ -71,7 +71,9 @@ pub fn outbound_configure(
         transactions: Transactions::new(),
         time: Local::now(),
     };
+
     dialogs.push(dialog);
+
     for dg in dialogs.iter_mut() {
         if dg.call_id == call_id {
             let mut transactions = dg.transactions.get_transactions().unwrap();

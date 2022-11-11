@@ -87,6 +87,14 @@ fn rocket() -> _ {
 
     let ip = interface.addr.ip();
 
+    // PCAP
+    let pcap_conf = conf.clone();
+    tokio::spawn(async move {
+        capture(&interface, &Uuid::new_v4(), &pcap_conf.pcap);
+    });
+    // wait until pcap starts, this needs improvement, needs a feedback from pcap
+    thread::sleep(Duration::from_secs(2));
+
     let (mtx, mrx) = sync_channel::<Message>(1);
     let (stx, srx) = setup_processor::<UdpCommand>();
     let (rtx, rrx) = setup_processor::<UdpCommand>();
@@ -97,8 +105,6 @@ fn rocket() -> _ {
     // Needed to unregister the UA on shutdown
     let exit_config = conf.clone();
     let exit_state = dialog_state.clone();
-
-    let pcap_conf = conf.clone();
 
     let local_conf = SelfConfiguration {
         flow: Direction::Inbound,
@@ -141,10 +147,6 @@ fn rocket() -> _ {
         }
     });
 
-    tokio::spawn(async move {
-        capture(&interface, &Uuid::new_v4(), &pcap_conf.pcap);
-    });
-
     rocket::build()
         .manage(mtx)
         .mount("/", routes![make_call, toggle_log])
@@ -152,7 +154,8 @@ fn rocket() -> _ {
             Box::pin(async move {
                 info!("sending unregister command");
                 unregister_ua(&exit_state, &exit_config);
-                thread::sleep(Duration::from_secs(1));
+                // this needs improvements, needs feedback from pcap, after SIGINT, to stop capturing packets
+                thread::sleep(Duration::from_secs(3));
             })
         }))
 }

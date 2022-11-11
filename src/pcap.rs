@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use etherparse::SlicedPacket;
 use if_addrs::Interface;
 use pcap::{Capture, Device, Packet};
 use uuid::Uuid;
@@ -36,7 +37,7 @@ pub fn capture(interface: &Interface, uuid: &Uuid, pcap: &Option<String>) {
         None => false,
     });
 
-    write_pcap_header(uuid.to_string());
+    let mut file_handler = write_pcap_header(uuid.to_string());
     match device {
         Some(captured_device) => {
             info!("Capturing now on {:?}", &captured_device.desc);
@@ -48,14 +49,23 @@ pub fn capture(interface: &Interface, uuid: &Uuid, pcap: &Option<String>) {
                 .unwrap();
 
             while let Ok(packet) = cap.next_packet() {
-                write_pcap(&packet, uuid.to_string())
+                match SlicedPacket::from_ethernet(&packet) {
+                    Err(value) => error!("Err {:?}", value),
+                    Ok(value) => {
+                        if let Some(etherparse::TransportSlice::Udp(u)) = value.transport {
+                            if u.source_port() == 5060 {
+                                write_pcap(&packet, &mut file_handler);
+                            }
+                        }
+                    }
+                }
             }
         }
         None => info!("could not find a device to start pcap on"),
     };
 }
 
-fn write_pcap_header(name: String) {
+fn write_pcap_header(name: String) -> File {
     if !Path::new(&format!("{}.pcap", name)).exists() {
         File::create(format!("{}.pcap", name)).unwrap();
     }
@@ -73,14 +83,10 @@ fn write_pcap_header(name: String) {
         file.write_all(any_as_u8_slice(&(65535_u32))).unwrap();
         file.write_all(any_as_u8_slice(&(1_u32))).unwrap();
     }
+    file
 }
 
-fn write_pcap(packet: &Packet, name: String) {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .append(true)
-        .open(&format!("{}.pcap", name))
-        .unwrap();
+fn write_pcap(packet: &Packet, file: &mut File) {
     unsafe {
         file.write_all(any_as_u8_slice(&(packet.header.ts.tv_sec as u32)))
             .unwrap();

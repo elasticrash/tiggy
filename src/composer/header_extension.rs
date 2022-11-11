@@ -43,9 +43,13 @@ impl PartialHeaderClone for SipMessage {
         headers.push(self.call_id_header().unwrap().clone().into());
         headers.push(self.user_agent_header().unwrap().clone().into());
 
+        if self.expires_header().is_some() {
+            headers.push(self.expires_header().unwrap().clone().into());
+        }   
+
         if !skip_cseq {
             let cseq = self.cseq_header().unwrap().typed().unwrap();
-
+            
             headers.push(
                 rsip::typed::CSeq {
                     seq: cseq.seq + 1,

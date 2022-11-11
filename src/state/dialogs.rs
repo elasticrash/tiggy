@@ -36,9 +36,9 @@ impl Display for Direction {
 
 /// Collection of Dialogs
 pub struct Dialogs {
-    pub state: Arc<Mutex<Vec<Dialog>>>,
-    pub sip: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
-    pub rtp: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
+    state: Arc<Mutex<Vec<Dialog>>>,
+    sip: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
+    rtp: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
 }
 
 impl Display for Dialog {
