@@ -29,7 +29,6 @@ pub fn rtp_event_loop(
             // peek on the socket, for pending messages
             let mut maybe_msg: Option<Vec<u8>> = None;
             {
-
                 let packets_queued = peek(&mut socket, &mut rtp_buffer);
 
                 if packets_queued > 0 {
@@ -48,6 +47,7 @@ pub fn rtp_event_loop(
             let channel = state.get_rtp_channel().unwrap();
 
             if let Ok(data) = channel.1.try_recv() {
+                info!("sending RTP packet");
                 if data.exit {
                     break 'thread;
                 }
