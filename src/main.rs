@@ -105,16 +105,20 @@ fn rocket() -> _ {
     // Needed to unregister the UA on shutdown
     let exit_config = conf.clone();
     let exit_state = dialog_state.clone();
+    let reg_state = dialog_state.clone();
 
     let local_conf = SelfConfiguration {
         flow: Direction::Inbound,
         verbosity: Verbosity::Minimal,
-        ip,
+        ip: ip.clone(),
     };
 
     let arc_settings = Arc::new(Mutex::new(local_conf));
 
-    sip::event_loop::sip_event_loop(&conf, &dialog_state, &arc_settings);
+    info!("register loop");
+    sip::register_event_loop::reg_event_loop(&conf, &reg_state, ip.clone());
+    info!("sip loop");
+    sip::sip_event_loop::sip_event_loop(&conf, &dialog_state, &arc_settings);
 
     tokio::spawn(async move {
         'thread: loop {

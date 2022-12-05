@@ -135,20 +135,20 @@ pub fn process_response_inbound(
     state: &Arc<Mutex<Dialogs>>,
 ) {
     match response.status_code {
-        StatusCode::Unauthorized => {
+        StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
             let auth = WwwAuthenticate::try_from(
                 header_opt!(response.headers().iter(), Header::WwwAuthenticate)
                     .unwrap()
                     .clone(),
             )
             .unwrap();
+            info!("composing register response");
 
             let mut transaction: Option<String> = None;
             {
                 let state: Arc<Mutex<Dialogs>> = state.clone();
                 let mut locked_state = state.lock().unwrap();
                 let mut dialogs = locked_state.get_dialogs().unwrap();
-
                 for dg in dialogs.iter_mut() {
                     if matches!(dg.diag_type, Direction::Inbound) {
                         let mut transactions = dg.transactions.get_transactions().unwrap();

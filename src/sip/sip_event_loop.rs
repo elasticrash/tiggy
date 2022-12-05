@@ -11,7 +11,6 @@ use crate::{
         inbound::{process_request_inbound, process_response_inbound},
         outbound::{process_request_outbound, process_response_outbound},
     },
-    startup::registration::register_ua,
     state::{
         dialogs::{Dialogs, Direction},
         options::{SelfConfiguration, Verbosity},
@@ -25,9 +24,9 @@ pub fn sip_event_loop(
     c_dialog_state: &Arc<Mutex<Dialogs>>,
     c_settings: &Arc<Mutex<SelfConfiguration>>,
 ) -> JoinHandle<()> {
-    let conf = c_conf.clone();
     let state: Arc<Mutex<Dialogs>> = c_dialog_state.clone();
-    let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(c_settings);
+    let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(&c_settings);
+    let conf = c_conf.clone();
 
     tokio::spawn(async move {
         let dialog_state = state;
@@ -37,17 +36,10 @@ pub fn sip_event_loop(
         socket
             .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
             .expect("connect function failed");
-
-
+        let settings = arc_settings.lock().unwrap();
         let verbosity: Verbosity;
-
         let mut sip_buffer = [0_u8; 65535];
-        {
-            let settings = arc_settings.lock().unwrap();
-
-            register_ua(&dialog_state, &conf, &settings.ip.clone());
-            verbosity = settings.verbosity.clone();
-        }
+        verbosity = settings.verbosity.clone();
 
         'thread: loop {
             // peek on the socket, for pending messages

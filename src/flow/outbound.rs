@@ -216,7 +216,7 @@ pub fn process_response_outbound(
 ) {
     match response.status_code {
         StatusCode::Trying => {}
-        StatusCode::Unauthorized => {
+        StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
             let auth = WwwAuthenticate::try_from(
                 header_opt!(response.headers().iter(), Header::WwwAuthenticate)
                     .unwrap()
@@ -396,7 +396,7 @@ pub fn process_response_outbound(
             }
 
             // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
-            rtp::event_loop::rtp_event_loop(&settings.ip, 49152, state.clone());
+            // rtp::event_loop::rtp_event_loop(&settings.ip, 49152, state.clone());
 
             if connection.is_some() && rtp_port.is_some() {
                 let state = state.clone();
