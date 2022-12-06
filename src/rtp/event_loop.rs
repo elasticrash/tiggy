@@ -5,7 +5,7 @@ use std::{
 use tokio::task::JoinHandle;
 
 use crate::{
-    state::{dialogs::Dialogs, options::Verbosity},
+    state::{dialogs::State, options::Verbosity},
     transmissions::sockets::{peek, receive_base, send},
 };
 use std::time::Duration;
@@ -13,7 +13,7 @@ use std::time::Duration;
 pub fn rtp_event_loop(
     c_connection: &IpAddr,
     port: u16,
-    dialog_state: Arc<Mutex<Dialogs>>,
+    dialog_state: Arc<Mutex<State>>,
 ) -> JoinHandle<()> {
     let connection = *c_connection;
     tokio::spawn(async move {
@@ -29,7 +29,6 @@ pub fn rtp_event_loop(
             // peek on the socket, for pending messages
             let mut maybe_msg: Option<Vec<u8>> = None;
             {
-
                 let packets_queued = peek(&mut socket, &mut rtp_buffer);
 
                 if packets_queued > 0 {
@@ -48,6 +47,7 @@ pub fn rtp_event_loop(
             let channel = state.get_rtp_channel().unwrap();
 
             if let Ok(data) = channel.1.try_recv() {
+                info!("sending RTP packet");
                 if data.exit {
                     break 'thread;
                 }

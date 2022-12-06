@@ -61,15 +61,32 @@ impl SipOptions {
     }
 
     pub fn unregister(&self) -> SipMessage {
-        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(true);
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
         headers.push(rsip::headers::Expires::from(0).into());
-        headers.push(
-            rsip::typed::CSeq {
-                seq: 3,
-                method: rsip::Method::Register,
-            }
-            .into(),
-        );
+
+        let request: SipMessage = rsip::Request {
+            method: rsip::Method::Register,
+            uri: rsip::Uri {
+                scheme: Some(rsip::Scheme::Sip),
+                host_with_port: rsip::Domain::from(format!(
+                    "{}:{}",
+                    &self.sip_server, &self.sip_port
+                ))
+                .into(),
+                ..Default::default()
+            },
+            version: rsip::Version::V2,
+            headers: headers.clone(),
+            body: Default::default(),
+        }
+        .into();
+
+        request
+    }
+
+    pub fn keep_alive(&self) -> SipMessage {
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
+        
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,
             uri: rsip::Uri {

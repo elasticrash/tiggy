@@ -3,12 +3,14 @@ use rsip::SipMessage;
 use std::{convert::TryFrom, net::UdpSocket};
 use yansi::Paint;
 
+#[derive(Debug)]
 pub struct MpscBase<T> {
     pub event: Option<T>,
     pub exit: bool,
 }
 
 /// Bundle Ip, Port and payload for Upd connections into a single struct
+#[derive(Debug)]
 pub struct SocketV4 {
     pub ip: String,
     pub port: u16,

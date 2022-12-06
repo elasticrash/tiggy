@@ -11,9 +11,8 @@ use crate::{
         inbound::{process_request_inbound, process_response_inbound},
         outbound::{process_request_outbound, process_response_outbound},
     },
-    startup::registration::register_ua,
     state::{
-        dialogs::{Dialogs, Direction},
+        dialogs::{State, Direction},
         options::{SelfConfiguration, Verbosity},
     },
     transmissions::sockets::{peek, receive, send},
@@ -22,12 +21,12 @@ use std::time::Duration;
 
 pub fn sip_event_loop(
     c_conf: &JSONConfiguration,
-    c_dialog_state: &Arc<Mutex<Dialogs>>,
+    c_dialog_state: Arc<Mutex<State>>,
     c_settings: &Arc<Mutex<SelfConfiguration>>,
 ) -> JoinHandle<()> {
+    let state: Arc<Mutex<State>> = c_dialog_state.clone();
+    let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(&c_settings);
     let conf = c_conf.clone();
-    let state: Arc<Mutex<Dialogs>> = c_dialog_state.clone();
-    let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(c_settings);
 
     tokio::spawn(async move {
         let dialog_state = state;
@@ -38,14 +37,10 @@ pub fn sip_event_loop(
             .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
             .expect("connect function failed");
 
-
         let verbosity: Verbosity;
-
         let mut sip_buffer = [0_u8; 65535];
         {
             let settings = arc_settings.lock().unwrap();
-
-            register_ua(&dialog_state, &conf, &settings.ip.clone());
             verbosity = settings.verbosity.clone();
         }
 
@@ -68,6 +63,7 @@ pub fn sip_event_loop(
                 let msg = maybe_msg.unwrap();
                 let mut settings = arc_settings.lock().unwrap();
                 {
+                    info!("match flow, {}", settings.flow);
                     match settings.flow {
                         Direction::Inbound => match msg {
                             rsip::SipMessage::Request(request) => process_request_inbound(

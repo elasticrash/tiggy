@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     config::JSONConfiguration,
     state::{
-        dialogs::{Dialog, Dialogs, Direction, Transactions},
+        dialogs::{Direction, Register, State, Transactions},
         options::SipOptions,
         transactions::{Transaction, TransactionType},
     },
@@ -19,7 +19,8 @@ use crate::{
 
 /// Preparation for registering the UA,
 /// as well as sending the first unauthorized message
-pub fn register_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration, ip: &IpAddr) {
+pub fn register_ua(state: &Arc<Mutex<State>>, conf: &JSONConfiguration, ip: &IpAddr) {
+    info!("starting registration process");
     let now = Utc::now();
 
     let register = SipOptions {
@@ -48,11 +49,11 @@ pub fn register_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration,
 
     let mut transaction: Option<String> = None;
     {
-        let state: Arc<Mutex<Dialogs>> = dialog_state.clone();
+        let state: Arc<Mutex<State>> = state.clone();
         let mut locked_state = state.lock().unwrap();
-        let mut dialogs = locked_state.get_dialogs().unwrap();
+        let mut registrations = locked_state.get_registrations().unwrap();
 
-        dialogs.push(Dialog {
+        registrations.push(Register {
             call_id: Uuid::new_v4().to_string(),
             diag_type: Direction::Inbound,
             local_tag: Uuid::new_v4().to_string(),
@@ -61,7 +62,7 @@ pub fn register_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration,
             time: Local::now(),
         });
 
-        for dg in dialogs.iter_mut() {
+        for dg in registrations.iter_mut() {
             if matches!(dg.diag_type, Direction::Inbound) {
                 let mut transactions = dg.transactions.get_transactions().unwrap();
                 transactions.push(Transaction {
@@ -79,9 +80,11 @@ pub fn register_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration,
     }
 
     if let Some(..) = transaction {
-        let state = dialog_state.clone();
-        let mut locked_state = state.lock().unwrap();
+        let reg_state = state.clone();
+        let mut locked_state = reg_state.lock().unwrap();
         let channel = locked_state.get_sip_channel().unwrap();
+
+        info!("sending initial registration");
 
         channel
             .0
@@ -97,24 +100,59 @@ pub fn register_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration,
     }
 }
 
-/// Sends the registration again with Expires 0
-pub fn unregister_ua(dialog_state: &Arc<Mutex<Dialogs>>, conf: &JSONConfiguration) {
+/// Keep registration alive
+pub fn keep_alive(state: Arc<Mutex<State>>, conf: &JSONConfiguration) {
     let mut sip: Option<SipMessage> = None;
     {
-        let state: Arc<Mutex<Dialogs>> = dialog_state.clone();
-        let mut locked_state = state.lock().unwrap();
-        let mut dialogs = locked_state.get_dialogs().unwrap();
+        let reg_state: Arc<Mutex<State>> = state.clone();
+        let mut locked_state = reg_state.lock().unwrap();
+        let mut registrations = locked_state.get_registrations().unwrap();
 
-        if let Some(dg) = dialogs.iter_mut().next() {
+        if let Some(dg) = registrations.iter_mut().next() {
             let mut transactions = dg.transactions.get_transactions().unwrap();
-            let transaction = transactions.first_mut().unwrap();
+            let transaction = transactions.last_mut().unwrap();
+            sip = Some(transaction.object.keep_alive());
+            transaction.local = sip.clone();
+        }
+    }
+
+    if let Some(..) = sip {
+        let locked_socket = state.clone();
+        let mut unlocked_socket = locked_socket.lock().unwrap();
+        let channel = unlocked_socket.get_sip_channel().unwrap();
+
+        channel
+            .0
+            .send(MpscBase {
+                event: Some(SocketV4 {
+                    ip: conf.clone().sip_server,
+                    port: conf.clone().sip_port,
+                    bytes: sip.unwrap().to_string().as_bytes().to_vec(),
+                }),
+                exit: false,
+            })
+            .unwrap();
+    }
+}
+
+/// Sends the registration again with Expires 0
+pub fn unregister_ua(state: Arc<Mutex<State>>, conf: &JSONConfiguration) {
+    let mut sip: Option<SipMessage> = None;
+    {
+        let reg_state: Arc<Mutex<State>> = state.clone();
+        let mut locked_state = reg_state.lock().unwrap();
+        let mut registrations = locked_state.get_registrations().unwrap();
+
+        if let Some(dg) = registrations.iter_mut().next() {
+            let mut transactions = dg.transactions.get_transactions().unwrap();
+            let transaction = transactions.last_mut().unwrap();
             sip = Some(transaction.object.unregister());
             transaction.local = sip.clone();
         }
     }
 
     if let Some(..) = sip {
-        let locked_socket = dialog_state.clone();
+        let locked_socket = state.clone();
         let mut unlocked_socket = locked_socket.lock().unwrap();
         let channel = unlocked_socket.get_sip_channel().unwrap();
 

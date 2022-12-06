@@ -1,14 +1,15 @@
-#tiggy
+# tiggy
 ----------
-A Naive implementation of non Media enabled cli softphone. This my rust/sip playground
+A Naive implementation of non Media enabled cli softphone. This id my rust/sip playground
 
 Features & Flaws:
 
 * Autoanswers incoming calls
 * Can Make outbound calls
 * State is in a messy state, but kind of useable
-* For the time it logs all SIP messages in a file
+* SIP can be logged automaticall in a pcap file, if provided which interface needs to be monitored
 * Its only been tested in few specific setups
+* Naive attempt to implement RTP on my own
 
 I am dropping the TUI interface in favour for an http interface. 
 

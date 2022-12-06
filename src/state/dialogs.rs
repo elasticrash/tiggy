@@ -20,6 +20,8 @@ pub struct Dialog {
     pub time: DateTime<Local>,
 }
 
+pub type Register = Dialog;
+
 pub enum Direction {
     Inbound,
     Outbound,
@@ -34,9 +36,10 @@ impl Display for Direction {
     }
 }
 
-/// Collection of Dialogs
-pub struct Dialogs {
-    state: Arc<Mutex<Vec<Dialog>>>,
+/// Collection of State
+pub struct State {
+    dialog: Arc<Mutex<Vec<Dialog>>>,
+    reg: Arc<Mutex<Vec<Register>>>,
     sip: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
     rtp: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
 }
@@ -48,55 +51,60 @@ impl Display for Dialog {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum DialogsLockError {
+pub enum StateLockError {
     FailedToLock,
 }
 
-impl Error for DialogsLockError {}
+impl Error for StateLockError {}
 
-impl fmt::Display for DialogsLockError {
+impl fmt::Display for StateLockError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl<T> From<PoisonError<T>> for DialogsLockError {
+impl<T> From<PoisonError<T>> for StateLockError {
     fn from(_: PoisonError<T>) -> Self {
-        DialogsLockError::FailedToLock
+        StateLockError::FailedToLock
     }
 }
 
 pub type UdpCommand = MpscBase<SocketV4>;
 type SRUdpCommand = (Sender<UdpCommand>, Receiver<UdpCommand>);
 
-impl Dialogs {
+impl State {
     pub fn new(
         (s_a, r_a): (Sender<UdpCommand>, Receiver<UdpCommand>),
         (s_b, r_b): (Sender<UdpCommand>, Receiver<UdpCommand>),
-    ) -> Dialogs {
-        Dialogs {
-            state: Arc::new(Mutex::new(vec![])),
+    ) -> State {
+        State {
+            dialog: Arc::new(Mutex::new(vec![])),
+            reg: Arc::new(Mutex::new(vec![])),
             sip: Arc::new(Mutex::new((s_a, r_a))),
             rtp: Arc::new(Mutex::new((s_b, r_b))),
         }
     }
 
-    pub fn get_dialogs(&mut self) -> Result<MutexGuard<Vec<Dialog>>, DialogsLockError> {
-        Ok(self.state.lock()?)
+    pub fn get_dialogs(&mut self) -> Result<MutexGuard<Vec<Dialog>>, StateLockError> {
+        Ok(self.dialog.lock()?)
     }
 
-    pub fn get_sip_channel(&mut self) -> Result<MutexGuard<SRUdpCommand>, DialogsLockError> {
+    pub fn get_registrations(&mut self) -> Result<MutexGuard<Vec<Register>>, StateLockError> {
+        Ok(self.reg.lock()?)
+    }
+
+    pub fn get_sip_channel(&mut self) -> Result<MutexGuard<SRUdpCommand>, StateLockError> {
         Ok(self.sip.lock()?)
     }
 
-    pub fn get_rtp_channel(&mut self) -> Result<MutexGuard<SRUdpCommand>, DialogsLockError> {
+    pub fn get_rtp_channel(&mut self) -> Result<MutexGuard<SRUdpCommand>, StateLockError> {
         Ok(self.rtp.lock()?)
     }
 }
 
 /// Collection of Transactions
 pub struct Transactions {
-    pub state: Arc<Mutex<Vec<Transaction>>>,
+    pub dialog: Arc<Mutex<Vec<Transaction>>>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -121,13 +129,13 @@ impl<T> From<PoisonError<T>> for TransactionsLockError {
 impl Transactions {
     pub fn new() -> Transactions {
         Transactions {
-            state: Arc::new(Mutex::new(vec![])),
+            dialog: Arc::new(Mutex::new(vec![])),
         }
     }
 
     pub fn get_transactions(
         &mut self,
     ) -> Result<MutexGuard<Vec<Transaction>>, TransactionsLockError> {
-        Ok(self.state.lock()?)
+        Ok(self.dialog.lock()?)
     }
 }

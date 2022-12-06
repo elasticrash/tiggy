@@ -2,7 +2,7 @@ use crate::{
     commands::{auth::Auth, ok::ok, trying::trying},
     config::JSONConfiguration,
     state::{
-        dialogs::{Dialogs, Direction},
+        dialogs::{State, Direction},
         options::SelfConfiguration,
     },
     transmissions::sockets::{MpscBase, SocketV4},
@@ -25,7 +25,7 @@ use std::{
 pub fn process_request_inbound(
     request: &Request,
     conf: &JSONConfiguration,
-    state: &Arc<Mutex<Dialogs>>,
+    state: &Arc<Mutex<State>>,
     settings: &mut SelfConfiguration,
 ) {
     let mut locked_state = state.lock().unwrap();
@@ -132,10 +132,14 @@ pub fn process_request_inbound(
 pub fn process_response_inbound(
     response: &Response,
     conf: &JSONConfiguration,
-    state: &Arc<Mutex<Dialogs>>,
+    state: &Arc<Mutex<State>>,
 ) {
     match response.status_code {
-        StatusCode::Unauthorized => {
+        StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
+            // TODO: this part needs to be a bit more generic
+            // Now its too specific for registrations
+            info!("i/composing register response");
+
             let auth = WwwAuthenticate::try_from(
                 header_opt!(response.headers().iter(), Header::WwwAuthenticate)
                     .unwrap()
@@ -145,11 +149,10 @@ pub fn process_response_inbound(
 
             let mut transaction: Option<String> = None;
             {
-                let state: Arc<Mutex<Dialogs>> = state.clone();
+                let state: Arc<Mutex<State>> = state.clone();
                 let mut locked_state = state.lock().unwrap();
-                let mut dialogs = locked_state.get_dialogs().unwrap();
-
-                for dg in dialogs.iter_mut() {
+                let mut registrations = locked_state.get_registrations().unwrap();
+                for dg in registrations.iter_mut() {
                     if matches!(dg.diag_type, Direction::Inbound) {
                         let mut transactions = dg.transactions.get_transactions().unwrap();
                         let mut local_transaction = transactions.first_mut().unwrap();

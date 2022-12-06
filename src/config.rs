@@ -11,6 +11,7 @@ pub struct JSONConfiguration {
     pub sip_port: u16,
     pub extension: String,
     pub pcap: Option<String>,
+    pub reg_timeout: i8,
 }
 
 pub fn read(filename: &str) -> serde_json::Result<JSONConfiguration> {
