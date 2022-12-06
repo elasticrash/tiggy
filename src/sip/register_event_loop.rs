@@ -29,8 +29,8 @@ pub fn reg_event_loop(
             register_ua(&init_reg_state, &conf, &ip.clone());
         }
         info!("configuring scheduled registry");
-        let expression = "0 */2 * * * *";
-        let schedule = Schedule::from_str(expression).unwrap();
+        let expression = format!("0 */{} * * * *", conf.reg_timeout);
+        let schedule = Schedule::from_str(&expression).unwrap();
         info!("starting scheduled registry");
         loop {
             let upcoming = schedule.upcoming(Utc).take(1).next();
