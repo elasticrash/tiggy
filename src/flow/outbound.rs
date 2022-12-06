@@ -2,10 +2,10 @@ use crate::{
     commands::{auth::Auth, helper::get_remote_tag, ok::ok},
     composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
-    rtp::{self, MutableRtpPacket, RtpType},
+    rtp::{MutableRtpPacket, RtpType},
     slog::udp_logger,
     state::{
-        dialogs::{Dialog, Dialogs, Direction, Transactions},
+        dialogs::{Dialog, State, Direction, Transactions},
         options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
@@ -33,7 +33,7 @@ pub fn outbound_configure(
     conf: &JSONConfiguration,
     ip: &IpAddr,
     destination: &str,
-    dialog_state: &Arc<Mutex<Dialogs>>,
+    dialog_state: Arc<Mutex<State>>,
 ) {
     let mut locked_state = dialog_state.lock().unwrap();
     let mut dialogs = locked_state.get_dialogs().unwrap();
@@ -93,10 +93,10 @@ pub fn outbound_configure(
 
 /// Sends the Intial invite for an outbound call
 // TODO pass identifier for the call
-pub fn outbound_start(conf: &JSONConfiguration, state: &Arc<Mutex<Dialogs>>, vrb: &Verbosity) {
+pub fn outbound_start(conf: &JSONConfiguration, state: Arc<Mutex<State>>, vrb: &Verbosity) {
     let mut transaction: Option<String> = None;
     {
-        let state: Arc<Mutex<Dialogs>> = state.clone();
+        let state: Arc<Mutex<State>> = state.clone();
         let mut locked_state = state.lock().unwrap();
         let mut dialogs = locked_state.get_dialogs().unwrap();
         info!("number of dialogs {}: ", dialogs.len());
@@ -140,7 +140,7 @@ pub fn outbound_start(conf: &JSONConfiguration, state: &Arc<Mutex<Dialogs>>, vrb
 pub fn process_request_outbound(
     request: &Request,
     conf: &JSONConfiguration,
-    state: &Arc<Mutex<Dialogs>>,
+    state: &Arc<Mutex<State>>,
     settings: &mut SelfConfiguration,
 ) {
     let mut locked_state = state.lock().unwrap();
@@ -211,12 +211,14 @@ pub fn process_request_outbound(
 pub fn process_response_outbound(
     response: &Response,
     conf: &JSONConfiguration,
-    state: &Arc<Mutex<Dialogs>>,
+    state: &Arc<Mutex<State>>,
     settings: &mut SelfConfiguration,
 ) {
     match response.status_code {
         StatusCode::Trying => {}
         StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
+            info!("o/composing register response");
+
             let auth = WwwAuthenticate::try_from(
                 header_opt!(response.headers().iter(), Header::WwwAuthenticate)
                     .unwrap()
@@ -226,7 +228,7 @@ pub fn process_response_outbound(
 
             let mut transaction: Option<String> = None;
             {
-                let state: Arc<Mutex<Dialogs>> = state.clone();
+                let state: Arc<Mutex<State>> = state.clone();
                 let mut locked_state = state.lock().unwrap();
                 let mut dialogs = locked_state.get_dialogs().unwrap();
 
@@ -262,7 +264,7 @@ pub fn process_response_outbound(
             }
         }
         StatusCode::Ringing => {
-            let state: Arc<Mutex<Dialogs>> = state.clone();
+            let state: Arc<Mutex<State>> = state.clone();
             let mut locked_state = state.lock().unwrap();
             let mut dialogs = locked_state.get_dialogs().unwrap();
 
@@ -282,7 +284,7 @@ pub fn process_response_outbound(
             let mut connection: Option<IpAddr> = None;
             let mut rtp_port: Option<u16> = None;
             {
-                let state: Arc<Mutex<Dialogs>> = state.clone();
+                let state: Arc<Mutex<State>> = state.clone();
 
                 let mut locked_state = state.lock().unwrap();
                 let mut dialogs = locked_state.get_dialogs().unwrap();

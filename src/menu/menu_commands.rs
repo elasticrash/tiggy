@@ -11,14 +11,14 @@ use crate::{
     processor::message::Message,
     startup::registration::unregister_ua,
     state::{
-        dialogs::{Dialogs, Direction},
+        dialogs::{State, Direction},
         options::{SelfConfiguration, Verbosity},
     },
 };
 
 pub fn send_menu_commands(
     processable_object: &Message,
-    dialog_state: &Arc<Mutex<Dialogs>>,
+    dialog_state: Arc<Mutex<State>>,
     conf: &JSONConfiguration,
     settings: &mut SelfConfiguration,
     ip: &IpAddr,
@@ -28,7 +28,7 @@ pub fn send_menu_commands(
     match processable_object.bind {
         'u' => false,
         'x' => {
-            unregister_ua(dialog_state, conf);
+            unregister_ua(dialog_state.clone(), conf);
             true
         }
         's' => {
@@ -50,8 +50,8 @@ pub fn send_menu_commands(
 
                     if is_string_numeric(o.clone()) {
                         settings.flow = Direction::Outbound;
-                        outbound_configure(conf, ip, o, dialog_state);
-                        outbound_start(conf, dialog_state, &settings.verbosity);
+                        outbound_configure(conf, ip, o, dialog_state.clone());
+                        outbound_start(conf, dialog_state.clone(), &settings.verbosity);
                     }
                 }
                 None => todo!(),

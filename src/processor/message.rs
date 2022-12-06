@@ -1,7 +1,4 @@
-use std::sync::mpsc;
-
-use crate::mpsc::Receiver;
-use crate::mpsc::Sender;
+use std::sync::mpsc::{self, Receiver, Sender};
 
 pub trait Execute {
     fn execute();
