@@ -1,15 +1,15 @@
 use crate::{
-    commands::{auth::Auth, ok::ok, trying::trying},
+    commands::{auth::Auth, helper::get_nonce, ok::ok, trying::trying},
     config::JSONConfiguration,
     state::{
-        dialogs::{State, Direction},
+        dialogs::{Direction, State},
         options::SelfConfiguration,
     },
     transmissions::sockets::{MpscBase, SocketV4},
 };
 use rsip::{
     header_opt,
-    headers::ToTypedHeader,
+    headers::{ProxyAuthenticate, ToTypedHeader},
     message::HasHeaders,
     message::HeadersExt,
     typed::{Via, WwwAuthenticate},
@@ -140,49 +140,59 @@ pub fn process_response_inbound(
             // Now its too specific for registrations
             info!("i/composing register response");
 
-            let auth = WwwAuthenticate::try_from(
-                header_opt!(response.headers().iter(), Header::WwwAuthenticate)
-                    .unwrap()
-                    .clone(),
-            )
-            .unwrap();
+            let www_auth = header_opt!(response.headers().iter(), Header::WwwAuthenticate);
+            let proxy_auth = header_opt!(response.headers().iter(), Header::ProxyAuthenticate);
 
-            let mut transaction: Option<String> = None;
-            {
-                let state: Arc<Mutex<State>> = state.clone();
-                let mut locked_state = state.lock().unwrap();
-                let mut registrations = locked_state.get_registrations().unwrap();
-                for dg in registrations.iter_mut() {
-                    if matches!(dg.diag_type, Direction::Inbound) {
-                        let mut transactions = dg.transactions.get_transactions().unwrap();
-                        let mut local_transaction = transactions.first_mut().unwrap();
-                        local_transaction.object.nonce = Some(auth.nonce);
-                        local_transaction.object.set_auth(conf, "REGISTER");
-                        local_transaction.object.msg = local_transaction.local.clone();
+            if www_auth.is_some() || proxy_auth.is_some() {
+                let nonce = if www_auth.is_some() {
+                    WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                        .unwrap()
+                        .nonce
+                } else {
+                    let pa_string =
+                        ProxyAuthenticate::try_from(proxy_auth.unwrap().clone()).unwrap();
+                    get_nonce(&pa_string.to_string()).to_string()
+                };
 
-                        transaction =
-                            Some(local_transaction.object.push_auth_to_register().to_string());
-                        break;
+                info!("nonce {}", nonce);
+
+                let mut transaction: Option<String> = None;
+                {
+                    let state: Arc<Mutex<State>> = state.clone();
+                    let mut locked_state = state.lock().unwrap();
+                    let mut registrations = locked_state.get_registrations().unwrap();
+                    for dg in registrations.iter_mut() {
+                        if matches!(dg.diag_type, Direction::Inbound) {
+                            let mut transactions = dg.transactions.get_transactions().unwrap();
+                            let mut local_transaction = transactions.first_mut().unwrap();
+                            local_transaction.object.nonce = Some(nonce);
+                            local_transaction.object.set_auth(conf, "REGISTER");
+                            local_transaction.object.msg = local_transaction.local.clone();
+
+                            transaction =
+                                Some(local_transaction.object.push_auth_to_register().to_string());
+                            break;
+                        }
                     }
                 }
-            }
 
-            if let Some(..) = transaction {
-                let locked_socket = state.clone();
-                let mut unlocked_socket = locked_socket.lock().unwrap();
-                let channel = unlocked_socket.get_sip_channel().unwrap();
+                if let Some(..) = transaction {
+                    let locked_socket = state.clone();
+                    let mut unlocked_socket = locked_socket.lock().unwrap();
+                    let channel = unlocked_socket.get_sip_channel().unwrap();
 
-                channel
-                    .0
-                    .send(MpscBase {
-                        event: Some(SocketV4 {
-                            ip: conf.clone().sip_server,
-                            port: conf.clone().sip_port,
-                            bytes: transaction.unwrap().as_bytes().to_vec(),
-                        }),
-                        exit: false,
-                    })
-                    .unwrap();
+                    channel
+                        .0
+                        .send(MpscBase {
+                            event: Some(SocketV4 {
+                                ip: conf.clone().sip_server,
+                                port: conf.clone().sip_port,
+                                bytes: transaction.unwrap().as_bytes().to_vec(),
+                            }),
+                            exit: false,
+                        })
+                        .unwrap();
+                }
             }
         }
         StatusCode::Trying => {}

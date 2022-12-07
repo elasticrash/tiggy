@@ -1,5 +1,6 @@
 /target
 config.json
+config_staging.json
 log.txt
 /.vscode
 *.ps1
