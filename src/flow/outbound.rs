@@ -1,11 +1,15 @@
 use crate::{
-    commands::{auth::Auth, helper::get_remote_tag, ok::ok},
+    commands::{
+        auth::Auth,
+        helper::{get_address_from_contact, get_address_from_record_route, get_remote_tag},
+        ok::ok,
+    },
     composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
     rtp::{MutableRtpPacket, RtpType},
     slog::udp_logger,
     state::{
-        dialogs::{Dialog, State, Direction, Transactions},
+        dialogs::{Dialog, Direction, State, Transactions},
         options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
@@ -119,8 +123,8 @@ pub fn outbound_start(conf: &JSONConfiguration, state: Arc<Mutex<State>>, vrb: &
         }
     }
     if let Some(..) = transaction {
-        let state = state.clone();
-        let mut locked_state = state.lock().unwrap();
+        let t_state = state;
+        let mut locked_state = t_state.lock().unwrap();
         let channel = locked_state.get_sip_channel().unwrap();
 
         channel
@@ -355,19 +359,13 @@ pub fn process_response_outbound(
 
                             let mut ack_transaction = Transaction {
                                 object: ack.clone(),
-                                local: Some(ack.create_ack(
-                                    via_from_invite,
-                                    response.headers.get_record_route_header_array().clone(),
-                                    contact,
-                                    cseq_count,
-                                )),
+                                local: Some(ack.create_ack(via_from_invite, contact, cseq_count)),
                                 remote: None,
                                 tr_type: TransactionType::Ack,
                             };
 
                             ack_transaction.object.msg = Some(ack_transaction.object.create_ack(
                                 via_from_invite,
-                                response.headers.get_record_route_header_array().clone(),
                                 contact,
                                 cseq_count,
                             ));
@@ -384,12 +382,24 @@ pub fn process_response_outbound(
                 let mut locked_state = state.lock().unwrap();
                 let channel = locked_state.get_sip_channel().unwrap();
 
+                let c_header = response.headers.get_contact().unwrap().to_string();
+                let rr_header = response.headers.get_record_route_header_array();
+                let rr_header_last = rr_header.last();
+
+                let curi = match rr_header_last {
+                    Some(h_t_s) => (
+                        get_address_from_record_route(h_t_s.to_string()),
+                        conf.clone().sip_port,
+                    ),
+                    None => get_address_from_contact(c_header),
+                };
+
                 channel
                     .0
                     .send(MpscBase {
                         event: Some(SocketV4 {
-                            ip: conf.clone().sip_server,
-                            port: conf.clone().sip_port,
+                            ip: curi.0.to_string(),
+                            port: curi.1,
                             bytes: transaction.unwrap().as_bytes().to_vec(),
                         }),
                         exit: false,
@@ -400,41 +410,44 @@ pub fn process_response_outbound(
             // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
             // rtp::event_loop::rtp_event_loop(&settings.ip, 49152, state.clone());
 
-            if connection.is_some() && rtp_port.is_some() {
-                let state = state.clone();
-                info!("target rtp located : {:?}:{:?}", connection, rtp_port);
-                info!("source rtp located : {:?}:{}", settings.ip, 49152);
-                info!("starting rtp event loop");
+            match connection.is_some() && rtp_port.is_some() {
+                true => {
+                    let state = state.clone();
+                    info!("target rtp located : {:?}:{:?}", connection, rtp_port);
+                    info!("source rtp located : {:?}:{}", settings.ip, 49152);
+                    info!("starting rtp event loop");
 
-                let mut rng = rand::thread_rng();
-                let n1: u32 = rng.gen();
-                let n2: u16 = rng.gen();
-                let n3: u32 = rng.gen();
+                    let mut rng = rand::thread_rng();
+                    let n1: u32 = rng.gen();
+                    let n2: u16 = rng.gen();
+                    let n3: u32 = rng.gen();
 
-                info!("constructing first rtp packet");
-                let mut state_for_rtp = state.lock().unwrap();
+                    info!("constructing first rtp packet");
+                    let mut state_for_rtp = state.lock().unwrap();
 
-                let channel = state_for_rtp.get_rtp_channel().unwrap();
-                let mut rtp_buffer = [0_u8; 24];
-                let mut packet = MutableRtpPacket::new(&mut rtp_buffer).unwrap();
-                packet.set_version(2);
-                packet.set_payload_type(RtpType::Pcma);
-                packet.set_sequence(n2);
-                packet.set_timestamp(n1);
-                packet.set_ssrc(n3);
+                    let channel = state_for_rtp.get_rtp_channel().unwrap();
+                    let mut rtp_buffer = [0_u8; 24];
+                    let mut packet = MutableRtpPacket::new(&mut rtp_buffer).unwrap();
+                    packet.set_version(2);
+                    packet.set_payload_type(RtpType::Pcma);
+                    packet.set_sequence(n2);
+                    packet.set_timestamp(n1);
+                    packet.set_ssrc(n3);
 
-                info!("sending rtp packet");
-                channel
-                    .0
-                    .send(MpscBase {
-                        event: Some(SocketV4 {
-                            ip: connection.unwrap().to_string(),
-                            port: rtp_port.unwrap(),
-                            bytes: packet.consume_to_immutable().packet().to_vec(),
-                        }),
-                        exit: false,
-                    })
-                    .unwrap();
+                    info!("sending rtp packet");
+                    channel
+                        .0
+                        .send(MpscBase {
+                            event: Some(SocketV4 {
+                                ip: connection.unwrap().to_string(),
+                                port: rtp_port.unwrap(),
+                                bytes: packet.consume_to_immutable().packet().to_vec(),
+                            }),
+                            exit: false,
+                        })
+                        .unwrap();
+                }
+                false => panic!("unknown error"),
             }
         }
         _ => todo!(),

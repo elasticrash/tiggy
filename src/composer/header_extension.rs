@@ -6,6 +6,7 @@ use rsip::{
 pub trait CustomHeaderExtension {
     fn get_via_header_array(&self) -> Vec<&Header>;
     fn get_record_route_header_array(&self) -> Vec<&Header>;
+    fn get_contact(&self) -> Option<&Header>;
     fn push_many(&mut self, new_headers: Vec<&Header>);
 }
 
@@ -19,6 +20,14 @@ impl CustomHeaderExtension for Headers {
         self.iter()
             .filter(|h| matches!(h, Header::RecordRoute(_)))
             .collect()
+    }
+
+    fn get_contact(&self) -> Option<&Header> {
+        self.iter()
+            .filter(|h| matches!(h, Header::Contact(_)))
+            .collect::<Vec<&Header>>()
+            .first()
+            .copied()
     }
 
     fn push_many(&mut self, new_headers: Vec<&Header>) {
@@ -45,11 +54,11 @@ impl PartialHeaderClone for SipMessage {
 
         if self.expires_header().is_some() {
             headers.push(self.expires_header().unwrap().clone().into());
-        }   
+        }
 
         if !skip_cseq {
             let cseq = self.cseq_header().unwrap().typed().unwrap();
-            
+
             headers.push(
                 rsip::typed::CSeq {
                     seq: cseq.seq + 1,

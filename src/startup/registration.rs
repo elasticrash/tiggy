@@ -23,7 +23,7 @@ pub fn register_ua(state: &Arc<Mutex<State>>, conf: &JSONConfiguration, ip: &IpA
     info!("starting registration process");
     let now = Utc::now();
 
-    let register = SipOptions {
+    let mut register = SipOptions {
         branch: format!(
             "z9hG4bK{}{}{}{}{}{}",
             now.month(),
@@ -65,12 +65,15 @@ pub fn register_ua(state: &Arc<Mutex<State>>, conf: &JSONConfiguration, ip: &IpA
         for dg in registrations.iter_mut() {
             if matches!(dg.diag_type, Direction::Inbound) {
                 let mut transactions = dg.transactions.get_transactions().unwrap();
-                transactions.push(Transaction {
+                let local_transaction = Transaction {
                     object: register.clone(),
                     local: Some(register.set_initial_register()),
                     remote: None,
                     tr_type: TransactionType::Typical,
-                });
+                };
+                transactions.push(local_transaction.clone());
+
+                register.msg = Some(local_transaction.object.set_initial_register());
 
                 let loop_transaction = transactions.last_mut().unwrap();
                 transaction = Some(loop_transaction.local.as_ref().unwrap().to_string());
@@ -117,7 +120,7 @@ pub fn keep_alive(state: Arc<Mutex<State>>, conf: &JSONConfiguration) {
     }
 
     if let Some(..) = sip {
-        let locked_socket = state.clone();
+        let locked_socket = state;
         let mut unlocked_socket = locked_socket.lock().unwrap();
         let channel = unlocked_socket.get_sip_channel().unwrap();
 
@@ -152,7 +155,7 @@ pub fn unregister_ua(state: Arc<Mutex<State>>, conf: &JSONConfiguration) {
     }
 
     if let Some(..) = sip {
-        let locked_socket = state.clone();
+        let locked_socket = state;
         let mut unlocked_socket = locked_socket.lock().unwrap();
         let channel = unlocked_socket.get_sip_channel().unwrap();
 

@@ -19,7 +19,7 @@ pub fn reg_event_loop(
     c_dialog_state: Arc<Mutex<State>>,
     ip: std::net::IpAddr,
 ) -> JoinHandle<()> {
-    let state: Arc<Mutex<State>> = c_dialog_state.clone();
+    let state: Arc<Mutex<State>> = c_dialog_state;
     let conf = c_conf.clone();
 
     tokio::spawn(async move {

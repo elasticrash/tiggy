@@ -24,8 +24,8 @@ pub fn sip_event_loop(
     c_dialog_state: Arc<Mutex<State>>,
     c_settings: &Arc<Mutex<SelfConfiguration>>,
 ) -> JoinHandle<()> {
-    let state: Arc<Mutex<State>> = c_dialog_state.clone();
-    let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(&c_settings);
+    let state: Arc<Mutex<State>> = c_dialog_state;
+    let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(c_settings);
     let conf = c_conf.clone();
 
     tokio::spawn(async move {

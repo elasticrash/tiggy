@@ -28,7 +28,7 @@ pub fn send_menu_commands(
     match processable_object.bind {
         'u' => false,
         'x' => {
-            unregister_ua(dialog_state.clone(), conf);
+            unregister_ua(dialog_state, conf);
             true
         }
         's' => {
@@ -51,7 +51,7 @@ pub fn send_menu_commands(
                     if is_string_numeric(o.clone()) {
                         settings.flow = Direction::Outbound;
                         outbound_configure(conf, ip, o, dialog_state.clone());
-                        outbound_start(conf, dialog_state.clone(), &settings.verbosity);
+                        outbound_start(conf, dialog_state, &settings.verbosity);
                     }
                 }
                 None => todo!(),

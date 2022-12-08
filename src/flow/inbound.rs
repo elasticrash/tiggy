@@ -9,7 +9,7 @@ use crate::{
 };
 use rsip::{
     header_opt,
-    headers::{ProxyAuthenticate, ToTypedHeader},
+    headers::ToTypedHeader,
     message::HasHeaders,
     message::HeadersExt,
     typed::{Via, WwwAuthenticate},
@@ -98,7 +98,28 @@ pub fn process_request_inbound(
                 .unwrap();
         }
         rsip::Method::Message => {}
-        rsip::Method::Notify => {}
+        rsip::Method::Notify => {
+            channel
+                .0
+                .send(MpscBase {
+                    event: Some(SocketV4 {
+                        ip: via.uri.host().to_string(),
+                        port: 5060,
+                        bytes: ok(
+                            conf,
+                            &settings.ip.clone().to_string(),
+                            request,
+                            rsip::Method::Notify,
+                            false,
+                        )
+                        .to_string()
+                        .as_bytes()
+                        .to_vec(),
+                    }),
+                    exit: false,
+                })
+                .unwrap();
+        }
         rsip::Method::Options => {
             channel
                 .0
@@ -144,13 +165,12 @@ pub fn process_response_inbound(
             let proxy_auth = header_opt!(response.headers().iter(), Header::ProxyAuthenticate);
 
             if www_auth.is_some() || proxy_auth.is_some() {
-                let nonce = if www_auth.is_some() {
+                let nonce = if let Some(..) = www_auth {
                     WwwAuthenticate::try_from(www_auth.unwrap().clone())
                         .unwrap()
                         .nonce
                 } else {
-                    let pa_string =
-                        ProxyAuthenticate::try_from(proxy_auth.unwrap().clone()).unwrap();
+                    let pa_string = proxy_auth.unwrap().clone();
                     get_nonce(&pa_string.to_string()).to_string()
                 };
 

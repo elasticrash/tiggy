@@ -11,7 +11,7 @@ impl SipOptions {
 
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
-        headers.push(rsip::headers::Expires::from(180).into());
+        headers.push(rsip::headers::Expires::from(120).into());
         headers.push(get_via(&self.ip, &self.sip_port));
         headers.push(get_from(&self.username, &self.tag_local, base_uri));
         headers.push(get_to(
@@ -63,7 +63,7 @@ impl SipOptions {
 
     pub fn unregister(&self) -> SipMessage {
         let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
-        headers.push(rsip::headers::Expires::from(0).into());
+        headers.push(rsip::headers::Expires::from(5).into());
 
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,
@@ -87,7 +87,7 @@ impl SipOptions {
 
     pub fn keep_alive(&self) -> SipMessage {
         let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
-        headers.push(rsip::headers::Expires::from(180).into());
+        headers.push(rsip::headers::Expires::from(120).into());
 
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,

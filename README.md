@@ -27,7 +27,7 @@ Ill keep the tui tagged if anyone is interested.
 }
 ```
 
-Pcap property is optional and it's the name of the interface you need to monitor.
+Pcap property is optional and it's the name of the interface you need to monitor. [1]
 
 #### Windows
 * Install Npcap.
@@ -39,3 +39,5 @@ Pcap property is optional and it's the name of the interface you need to monitor
 Install the libraries and header files for the libpcap library. For example:
 
 * On Debian based Linux: install libpcap-dev.
+
+[1] I have pcap commented out because its annoying to setup Npcap everytime

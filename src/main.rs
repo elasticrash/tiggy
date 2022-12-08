@@ -32,22 +32,21 @@ mod rtp;
 mod sip;
 
 ///PCAP
-mod pcap;
-
+// mod pcap;
 use menu::menu_commands::send_menu_commands;
 use network::get_ipv4;
 use processor::message::{setup_processor, Message, MessageType};
 use rocket::fairing::AdHoc;
 use rocket::response::status;
 use rocket::State;
-use state::dialogs::{State as SipState, Direction, UdpCommand};
+use state::dialogs::{Direction, State as SipState, UdpCommand};
 use state::options::{SelfConfiguration, Verbosity};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::{thread, time::Duration};
-use uuid::Uuid;
+// use uuid::Uuid;
 
-use crate::pcap::capture;
+// use crate::pcap::capture;
 use crate::startup::registration::unregister_ua;
 use crate::transmissions::sockets::MpscBase;
 
@@ -88,10 +87,11 @@ fn rocket() -> _ {
     let ip = interface.addr.ip();
 
     // PCAP
-    let pcap_conf = conf.clone();
-    tokio::spawn(async move {
-        capture(&interface, &Uuid::new_v4(), &pcap_conf.pcap);
-    });
+    // let pcap_conf = conf.clone();
+    // tokio::spawn(async move {
+    //     capture(&interface, &Uuid::new_v4(), &pcap_conf.pcap);
+    // });
+
     // wait until pcap starts, this needs improvement, needs a feedback from pcap
     thread::sleep(Duration::from_secs(2));
 
@@ -125,12 +125,12 @@ fn rocket() -> _ {
     let local_conf = SelfConfiguration {
         flow: Direction::Inbound,
         verbosity: Verbosity::Minimal,
-        ip: ip.clone(),
+        ip,
     };
 
     let arc_settings = Arc::new(Mutex::new(local_conf));
 
-    sip::register_event_loop::reg_event_loop(&conf, reg_state, ip.clone());
+    sip::register_event_loop::reg_event_loop(&conf, reg_state, ip);
     sip::sip_event_loop::sip_event_loop(&conf, sip_state, &arc_settings);
 
     tokio::spawn(async move {

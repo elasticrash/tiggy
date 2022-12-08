@@ -111,3 +111,29 @@ pub fn get_nonce(hstr: &str) -> &str {
     chars.next_back();
     chars.as_str()
 }
+
+pub fn get_address_from_contact(hstr: String) -> (String, u16) {
+    let (rem, (_, _)): (&str, (&str, &str)) =
+        tuple((take_until::<&str, &str, Error<&str>>("sip:"), tag("sip:")))(&hstr).unwrap();
+
+    let mut chars = rem.chars();
+    chars.next_back();
+    let adur = chars.as_str();
+    let adur_split = adur.split(':').collect::<Vec<&str>>();
+
+    (
+        adur_split[0].to_string(),
+        adur_split[1].parse::<u16>().unwrap(),
+    )
+}
+
+pub fn get_address_from_record_route(hstr: String) -> String {
+    let (rem, (_, _)): (&str, (&str, &str)) =
+        tuple((take_until::<&str, &str, Error<&str>>("sip:"), tag("sip:")))(&hstr).unwrap();
+
+    let mut chars = rem.chars();
+    chars.next_back();
+    let adur = chars.as_str();
+    let adur_split = adur.split(';').collect::<Vec<&str>>();
+    adur_split[0].to_string()
+}
