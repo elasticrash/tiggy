@@ -1,6 +1,7 @@
 use crate::{
     commands::{auth::Auth, helper::get_nonce, ok::ok, trying::trying},
     config::JSONConfiguration,
+    rtp,
     state::{
         dialogs::{Direction, State},
         options::SelfConfiguration,
@@ -17,6 +18,7 @@ use rsip::{
 };
 use std::{
     convert::TryFrom,
+    net::IpAddr,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -61,6 +63,9 @@ pub fn process_request_inbound(
         rsip::Method::Cancel => {}
         rsip::Method::Info => {}
         rsip::Method::Invite => {
+            let mut connection: Option<IpAddr> = None;
+            let mut rtp_port: Option<u16> = None;
+
             channel
                 .0
                 .send(MpscBase {
@@ -96,6 +101,35 @@ pub fn process_request_inbound(
                     exit: false,
                 })
                 .unwrap();
+
+            info!("{}", String::from_utf8_lossy(&request.body).to_string());
+            let sdp = sdp_rs::SessionDescription::try_from(
+                String::from_utf8_lossy(&request.body).to_string(),
+            );
+
+            connection = Some(
+                sdp.clone()
+                    .unwrap()
+                    .connection
+                    .unwrap()
+                    .connection_address
+                    .base,
+            );
+            rtp_port = Some(sdp.unwrap().media_descriptions.first().unwrap().media.port);
+
+            match connection.is_some() && rtp_port.is_some() {
+                true => {
+                    // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
+                    // rtp::event_loop::rtp_event_loop(
+                    //     &settings.ip,
+                    //     49152,
+                    //     state.clone(),
+                    //     &connection.unwrap(),
+                    //     rtp_port.unwrap(),
+                    // );
+                }
+                false => {}
+            }
         }
         rsip::Method::Message => {}
         rsip::Method::Notify => {
