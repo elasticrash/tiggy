@@ -6,7 +6,6 @@ use crate::{
     },
     composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
-    rtp,
     slog::udp_logger,
     state::{
         dialogs::{Dialog, Direction, State, Transactions},
@@ -283,8 +282,8 @@ pub fn process_response_outbound(
         StatusCode::SessionProgress => {}
         StatusCode::OK => {
             let mut transaction: Option<String> = None;
-            let mut connection: Option<IpAddr> = None;
-            let mut rtp_port: Option<u16> = None;
+            let connection: Option<IpAddr>;
+            let rtp_port: Option<u16>;
             {
                 let state: Arc<Mutex<State>> = state.clone();
 
@@ -317,13 +316,13 @@ pub fn process_response_outbound(
                             match connection.is_some() && rtp_port.is_some() {
                                 true => {
                                     // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
-                                    rtp::event_loop::rtp_event_loop(
-                                        &settings.ip,
-                                        49152,
-                                        state.clone(),
-                                        &connection.unwrap(),
-                                        rtp_port.unwrap(),
-                                    );
+                                    // rtp::event_loop::rtp_event_loop(
+                                    //     &settings.ip,
+                                    //     49152,
+                                    //     state.clone(),
+                                    //     &connection.unwrap(),
+                                    //     rtp_port.unwrap(),
+                                    // );
                                 }
                                 false => {}
                             }

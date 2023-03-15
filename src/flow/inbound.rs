@@ -1,7 +1,6 @@
 use crate::{
     commands::{auth::Auth, helper::get_nonce, ok::ok, trying::trying},
     config::JSONConfiguration,
-    rtp,
     state::{
         dialogs::{Direction, State},
         options::SelfConfiguration,
@@ -63,8 +62,7 @@ pub fn process_request_inbound(
         rsip::Method::Cancel => {}
         rsip::Method::Info => {}
         rsip::Method::Invite => {
-            let mut connection: Option<IpAddr> = None;
-            let mut rtp_port: Option<u16> = None;
+            // let connection: Option<IpAddr>;
 
             channel
                 .0
@@ -107,7 +105,7 @@ pub fn process_request_inbound(
                 String::from_utf8_lossy(&request.body).to_string(),
             );
 
-            connection = Some(
+            let connection: Option<IpAddr> = Some(
                 sdp.clone()
                     .unwrap()
                     .connection
@@ -115,7 +113,8 @@ pub fn process_request_inbound(
                     .connection_address
                     .base,
             );
-            rtp_port = Some(sdp.unwrap().media_descriptions.first().unwrap().media.port);
+            let rtp_port: Option<u16> =
+                Some(sdp.unwrap().media_descriptions.first().unwrap().media.port);
 
             match connection.is_some() && rtp_port.is_some() {
                 true => {

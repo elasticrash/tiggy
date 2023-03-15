@@ -15,11 +15,16 @@ use crate::{
 };
 use std::time::Duration;
 
+#[allow(dead_code)]
 const SAMPLE_RATE: f64 = 44_100.0;
+#[allow(dead_code)]
 const FREQUENCY: f64 = 440.0;
+#[allow(dead_code)]
 const AMPLITUDE: f32 = 0.25;
+#[allow(dead_code)]
 const ALAW_MAX: i16 = 0x0FFF;
 
+#[allow(dead_code)]
 pub fn rtp_event_loop(
     c_connection: &IpAddr,
     port: u16,
@@ -64,7 +69,7 @@ pub fn rtp_event_loop(
             packet.set_ssrc(n3);
 
             let mut body: [u8; 1405] = [0; 1405];
-            for i in 0..1405 {
+            for item in &mut body {
                 // Generating a sine wave sample
                 let mut sample = ((phase * FREQUENCY * 2.0 * PI).sin() as f32 * AMPLITUDE) as i16;
 
@@ -77,7 +82,6 @@ pub fn rtp_event_loop(
                 let mut mask: u16 = 0x0800;
                 let mut sign: u8 = 0;
                 let mut position: u8 = 11;
-                let mut lsb: u8 = 0;
 
                 if sample < 0 {
                     sample = sample.overflowing_neg().0;
@@ -90,13 +94,13 @@ pub fn rtp_event_loop(
                     mask >>= 1;
                     position -= 1;
                 }
-                if position == 4 {
-                    lsb = ((sample >> 1) & 0x0f) as u8;
+                let lsb: u8 = if position == 4 {
+                    ((sample >> 1) & 0x0f) as u8
                 } else {
-                    lsb = ((sample >> (position - 4)) & 0x0f) as u8;
-                }
+                    ((sample >> (position - 4)) & 0x0f) as u8
+                };
                 let output = ((sign | ((position - 4) << 4) | lsb) ^ 0x55) as i8;
-                body[i] = output as u8;
+                *item = output as u8;
             }
 
             packet.set_payload(&body);

@@ -97,6 +97,7 @@ impl State {
         Ok(self.sip.lock()?)
     }
 
+    #[allow(dead_code)]
     pub fn get_rtp_channel(&mut self) -> Result<MutexGuard<SRUdpCommand>, StateLockError> {
         Ok(self.rtp.lock()?)
     }
