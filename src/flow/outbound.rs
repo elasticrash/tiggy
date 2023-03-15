@@ -6,7 +6,6 @@ use crate::{
     },
     composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
-    rtp::{MutableRtpPacket, RtpType},
     slog::udp_logger,
     state::{
         dialogs::{Dialog, Direction, State, Transactions},
@@ -17,8 +16,6 @@ use crate::{
 };
 
 use chrono::prelude::*;
-use pnet_macros_support::packet::Packet;
-use rand::Rng;
 use rsip::{
     header_opt,
     message::HasHeaders,
@@ -181,7 +178,7 @@ pub fn process_request_outbound(
         Method::Info => todo!(),
         Method::Invite => todo!(),
         Method::Message => todo!(),
-        Method::Notify => todo!(),
+        Method::Notify => {}
         Method::Options => {
             channel
                 .0
@@ -285,8 +282,8 @@ pub fn process_response_outbound(
         StatusCode::SessionProgress => {}
         StatusCode::OK => {
             let mut transaction: Option<String> = None;
-            let mut connection: Option<IpAddr> = None;
-            let mut rtp_port: Option<u16> = None;
+            let connection: Option<IpAddr>;
+            let rtp_port: Option<u16>;
             {
                 let state: Arc<Mutex<State>> = state.clone();
 
@@ -315,6 +312,20 @@ pub fn process_response_outbound(
                             );
                             rtp_port =
                                 Some(sdp.unwrap().media_descriptions.first().unwrap().media.port);
+
+                            match connection.is_some() && rtp_port.is_some() {
+                                true => {
+                                    // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
+                                    // rtp::event_loop::rtp_event_loop(
+                                    //     &settings.ip,
+                                    //     49152,
+                                    //     state.clone(),
+                                    //     &connection.unwrap(),
+                                    //     rtp_port.unwrap(),
+                                    // );
+                                }
+                                false => {}
+                            }
 
                             let remote_tag = get_remote_tag(&hstr);
                             let now = Utc::now();
@@ -359,13 +370,19 @@ pub fn process_response_outbound(
 
                             let mut ack_transaction = Transaction {
                                 object: ack.clone(),
-                                local: Some(ack.create_ack(via_from_invite, contact, cseq_count)),
+                                local: Some(ack.create_ack(
+                                    via_from_invite,
+                                    response.headers.get_record_route_header_array().clone(),
+                                    contact,
+                                    cseq_count,
+                                )),
                                 remote: None,
                                 tr_type: TransactionType::Ack,
                             };
 
                             ack_transaction.object.msg = Some(ack_transaction.object.create_ack(
                                 via_from_invite,
+                                response.headers.get_record_route_header_array().clone(),
                                 contact,
                                 cseq_count,
                             ));
@@ -394,6 +411,8 @@ pub fn process_response_outbound(
                     None => get_address_from_contact(c_header),
                 };
 
+                info!("sending ACK @{:?}", curi);
+
                 channel
                     .0
                     .send(MpscBase {
@@ -406,49 +425,12 @@ pub fn process_response_outbound(
                     })
                     .unwrap();
             }
-
-            // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
-            // rtp::event_loop::rtp_event_loop(&settings.ip, 49152, state.clone());
-
-            match connection.is_some() && rtp_port.is_some() {
-                true => {
-                    let state = state.clone();
-                    info!("target rtp located : {:?}:{:?}", connection, rtp_port);
-                    info!("source rtp located : {:?}:{}", settings.ip, 49152);
-                    info!("starting rtp event loop");
-
-                    let mut rng = rand::thread_rng();
-                    let n1: u32 = rng.gen();
-                    let n2: u16 = rng.gen();
-                    let n3: u32 = rng.gen();
-
-                    info!("constructing first rtp packet");
-                    let mut state_for_rtp = state.lock().unwrap();
-
-                    let channel = state_for_rtp.get_rtp_channel().unwrap();
-                    let mut rtp_buffer = [0_u8; 24];
-                    let mut packet = MutableRtpPacket::new(&mut rtp_buffer).unwrap();
-                    packet.set_version(2);
-                    packet.set_payload_type(RtpType::Pcma);
-                    packet.set_sequence(n2);
-                    packet.set_timestamp(n1);
-                    packet.set_ssrc(n3);
-
-                    info!("sending rtp packet");
-                    channel
-                        .0
-                        .send(MpscBase {
-                            event: Some(SocketV4 {
-                                ip: connection.unwrap().to_string(),
-                                port: rtp_port.unwrap(),
-                                bytes: packet.consume_to_immutable().packet().to_vec(),
-                            }),
-                            exit: false,
-                        })
-                        .unwrap();
-                }
-                false => panic!("unknown error"),
-            }
+        }
+        StatusCode::ServerTimeOut => {
+            info!("something is a bit slow, getting a timeout");
+        }
+        StatusCode::RequestTimeout => {
+            info!("something is a bit slow, getting a timeout");
         }
         _ => todo!(),
     }

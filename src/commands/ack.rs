@@ -9,6 +9,7 @@ impl SipOptions {
     pub fn create_ack(
         &self,
         via: &Via,
+        rr: Vec<&Header>,
         cnt: &Contact,
         _cseq: &CSeq,
     ) -> SipMessage {
@@ -24,6 +25,13 @@ impl SipOptions {
             }
             .into(),
         );
+
+        let lroute = rr.last().unwrap().to_string();
+        let (_, route_value) = lroute.split_at(14).to_owned();
+
+        headers.push(rsip::Header::Route(rsip::headers::Route::new(
+            route_value.to_string(),
+        )));
 
         headers.push(
             rsip::typed::To {

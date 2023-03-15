@@ -4,6 +4,9 @@ use std::{
     path::Path,
 };
 
+use chrono::Utc;
+use yansi::Paint;
+
 use crate::state::options::Verbosity;
 
 /// Logs a Message on the console UI based on verbosity Level
@@ -16,7 +19,7 @@ pub fn udp_logger(msg: String, vrb: &Verbosity) {
                 info!("{}", line);
             }
         }
-        Verbosity::Minimal => info!("{}", print[0]),
+        Verbosity::Minimal => info!("{} {}", Paint::red(Utc::now()), print[0]),
         Verbosity::Quiet => {}
         Verbosity::Extreme => {
             for line in print.clone() {

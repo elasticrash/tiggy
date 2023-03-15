@@ -17,6 +17,7 @@ use rsip::{
 };
 use std::{
     convert::TryFrom,
+    net::IpAddr,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -61,6 +62,8 @@ pub fn process_request_inbound(
         rsip::Method::Cancel => {}
         rsip::Method::Info => {}
         rsip::Method::Invite => {
+            // let connection: Option<IpAddr>;
+
             channel
                 .0
                 .send(MpscBase {
@@ -96,6 +99,36 @@ pub fn process_request_inbound(
                     exit: false,
                 })
                 .unwrap();
+
+            info!("{}", String::from_utf8_lossy(&request.body).to_string());
+            let sdp = sdp_rs::SessionDescription::try_from(
+                String::from_utf8_lossy(&request.body).to_string(),
+            );
+
+            let connection: Option<IpAddr> = Some(
+                sdp.clone()
+                    .unwrap()
+                    .connection
+                    .unwrap()
+                    .connection_address
+                    .base,
+            );
+            let rtp_port: Option<u16> =
+                Some(sdp.unwrap().media_descriptions.first().unwrap().media.port);
+
+            match connection.is_some() && rtp_port.is_some() {
+                true => {
+                    // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
+                    // rtp::event_loop::rtp_event_loop(
+                    //     &settings.ip,
+                    //     49152,
+                    //     state.clone(),
+                    //     &connection.unwrap(),
+                    //     rtp_port.unwrap(),
+                    // );
+                }
+                false => {}
+            }
         }
         rsip::Method::Message => {}
         rsip::Method::Notify => {
