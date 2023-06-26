@@ -79,7 +79,7 @@ fn toggle_log(tr: &State<SyncSender<Message>>) -> status::Accepted<String> {
 
 #[launch]
 fn rocket() -> _ {
-    let conf = config::read("./edify.json").unwrap();
+    let conf = config::read("./config.json").unwrap();
 
     let interface = match get_ipv4() {
         Ok(ipv4) => ipv4,
