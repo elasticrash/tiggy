@@ -20,8 +20,9 @@ impl Auth for SipOptions {
             &conf.username, &auth_model.realm, &conf.password
         );
         let ha2 = format!(
-            "{}:sip:{}:{}",
+            "{}:sip:{}@{}:{}",
             &String::from(method),
+            &self.extension,
             &self.sip_server,
             &self.sip_port
         );

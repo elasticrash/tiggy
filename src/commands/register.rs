@@ -110,8 +110,8 @@ impl SipOptions {
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
-                    "{}:{}",
-                    &self.sip_server, &self.sip_port
+                    "{}@{}:{}",
+                    &self.extension, &self.sip_server, &self.sip_port
                 ))
                 .into(),
                 ..Default::default()

@@ -142,6 +142,9 @@ pub fn outbound_start(conf: &JSONConfiguration, state: Arc<Mutex<State>>, vrb: &
     }
 }
 
+//pub fn ack_invite(conf: &JSONConfiguration, state: &Arc<Mutex<State>>, vrb: &Verbosity) {
+//}
+
 pub fn process_request_outbound(
     request: &Request,
     conf: &JSONConfiguration,
@@ -222,8 +225,6 @@ pub fn process_response_outbound(
     match response.status_code {
         StatusCode::Trying => {}
         StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
-            info!("o/composing register response");
-
             let www_auth = header_opt!(response.headers().iter(), Header::WwwAuthenticate);
             let proxy_auth = header_opt!(response.headers().iter(), Header::ProxyAuthenticate);
             if www_auth.is_some() || proxy_auth.is_some() {
@@ -258,7 +259,13 @@ pub fn process_response_outbound(
                     for dg in dialogs.iter_mut().rev() {
                         if matches!(dg.diag_type, Direction::Outbound) {
                             let mut transactions = dg.transactions.get_transactions().unwrap();
+
                             let mut loop_transaction = transactions.last_mut().unwrap();
+
+                            if loop_transaction.object.nonce.is_some() {
+                                break;
+                            }
+
                             loop_transaction.object.nonce = Some(auth_model.nonce.clone());
                             loop_transaction
                                 .object
@@ -443,8 +450,6 @@ pub fn process_response_outbound(
                     ),
                     None => get_address_from_contact(c_header),
                 };
-
-                info!("sending ACK @{:?}", curi);
 
                 channel
                     .0
