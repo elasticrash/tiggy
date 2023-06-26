@@ -21,7 +21,7 @@ use rsip::{
     header_opt,
     message::HasHeaders,
     prelude::{HeadersExt, ToTypedHeader},
-    typed::{Via, WwwAuthenticate},
+    typed::{ProxyAuthenticate, Via, WwwAuthenticate},
     Header, Method, Request, Response, SipMessage, StatusCode,
 };
 use std::{
@@ -224,60 +224,74 @@ pub fn process_response_outbound(
         StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
             info!("o/composing register response");
 
-            let auth = WwwAuthenticate::try_from(
-                header_opt!(response.headers().iter(), Header::WwwAuthenticate)
-                    .unwrap()
-                    .clone(),
-            )
-            .unwrap();
+            let www_auth = header_opt!(response.headers().iter(), Header::WwwAuthenticate);
+            let proxy_auth = header_opt!(response.headers().iter(), Header::ProxyAuthenticate);
+            if www_auth.is_some() || proxy_auth.is_some() {
+                let auth_model: AuthModel = if let Some(..) = www_auth {
+                    AuthModel {
+                        nonce: WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                            .unwrap()
+                            .nonce,
+                        realm: WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                            .unwrap()
+                            .realm,
+                        qop: WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                            .unwrap()
+                            .qop,
+                    }
+                } else {
+                    let www_auth_from_proxy =
+                        ProxyAuthenticate::try_from(proxy_auth.unwrap().clone()).unwrap();
 
-            let mut transaction: Option<String> = None;
-            {
-                let state: Arc<Mutex<State>> = state.clone();
-                let mut locked_state = state.lock().unwrap();
-                let mut dialogs = locked_state.get_dialogs().unwrap();
+                    AuthModel {
+                        nonce: (www_auth_from_proxy).0.nonce,
+                        realm: (www_auth_from_proxy).0.realm,
+                        qop: (www_auth_from_proxy).0.qop,
+                    }
+                };
+                let mut transaction: Option<String> = None;
+                {
+                    let state: Arc<Mutex<State>> = state.clone();
+                    let mut locked_state = state.lock().unwrap();
+                    let mut dialogs = locked_state.get_dialogs().unwrap();
 
-                for dg in dialogs.iter_mut().rev() {
-                    if matches!(dg.diag_type, Direction::Outbound) {
-                        let mut transactions = dg.transactions.get_transactions().unwrap();
-                        let mut loop_transaction = transactions.last_mut().unwrap();
-                        loop_transaction.object.nonce = Some(auth.nonce.clone());
-                        loop_transaction.object.set_auth(
-                            conf,
-                            "INVITE",
-                            &AuthModel {
-                                nonce: auth.nonce.clone(),
-                                realm: auth.realm.clone(),
-                                qop: auth.qop.clone(),
-                            },
-                        );
-                        loop_transaction.object.msg = Some(loop_transaction.local.clone().unwrap());
-                        transaction = Some(
+                    for dg in dialogs.iter_mut().rev() {
+                        if matches!(dg.diag_type, Direction::Outbound) {
+                            let mut transactions = dg.transactions.get_transactions().unwrap();
+                            let mut loop_transaction = transactions.last_mut().unwrap();
+                            loop_transaction.object.nonce = Some(auth_model.nonce.clone());
                             loop_transaction
                                 .object
-                                .push_auth_to_invite(response.status_code.clone())
-                                .to_string(),
-                        );
-                        break;
+                                .set_auth(conf, "INVITE", &auth_model.clone());
+                            loop_transaction.object.msg =
+                                Some(loop_transaction.local.clone().unwrap());
+                            transaction = Some(
+                                loop_transaction
+                                    .object
+                                    .push_auth_to_invite(response.status_code.clone())
+                                    .to_string(),
+                            );
+                            break;
+                        }
                     }
                 }
-            }
-            if let Some(..) = transaction {
-                let state = state.clone();
-                let mut locked_state = state.lock().unwrap();
-                let channel = locked_state.get_sip_channel().unwrap();
+                if let Some(..) = transaction {
+                    let state = state.clone();
+                    let mut locked_state = state.lock().unwrap();
+                    let channel = locked_state.get_sip_channel().unwrap();
 
-                channel
-                    .0
-                    .send(MpscBase {
-                        event: Some(SocketV4 {
-                            ip: conf.clone().sip_server,
-                            port: conf.clone().sip_port,
-                            bytes: transaction.unwrap().as_bytes().to_vec(),
-                        }),
-                        exit: false,
-                    })
-                    .unwrap();
+                    channel
+                        .0
+                        .send(MpscBase {
+                            event: Some(SocketV4 {
+                                ip: conf.clone().sip_server,
+                                port: conf.clone().sip_port,
+                                bytes: transaction.unwrap().as_bytes().to_vec(),
+                            }),
+                            exit: false,
+                        })
+                        .unwrap();
+                }
             }
         }
         StatusCode::Ringing => {
@@ -370,7 +384,7 @@ pub fn process_response_outbound(
                                 nonce: None,
                                 nc: None,
                                 cnonce: None,
-                                qop: false
+                                qop: false,
                             };
 
                             let via_from_invite = loop_transaction
