@@ -1,6 +1,7 @@
 use crate::{
     commands::{
         auth::Auth,
+        auth::AuthModel,
         helper::{get_address_from_contact, get_address_from_record_route, get_remote_tag},
         ok::ok,
     },
@@ -64,6 +65,9 @@ pub fn outbound_configure(
         call_id: call_id.clone(),
         tag_local: Uuid::new_v4().to_string(),
         tag_remote: None,
+        nc: None,
+        cnonce: None,
+        qop: false,
     };
 
     let dialog = Dialog {
@@ -237,11 +241,23 @@ pub fn process_response_outbound(
                     if matches!(dg.diag_type, Direction::Outbound) {
                         let mut transactions = dg.transactions.get_transactions().unwrap();
                         let mut loop_transaction = transactions.last_mut().unwrap();
-                        loop_transaction.object.nonce = Some(auth.nonce);
-                        loop_transaction.object.set_auth(conf, "INVITE");
+                        loop_transaction.object.nonce = Some(auth.nonce.clone());
+                        loop_transaction.object.set_auth(
+                            conf,
+                            "INVITE",
+                            &AuthModel {
+                                nonce: auth.nonce.clone(),
+                                realm: auth.realm.clone(),
+                                qop: auth.qop.clone(),
+                            },
+                        );
                         loop_transaction.object.msg = Some(loop_transaction.local.clone().unwrap());
-                        transaction =
-                            Some(loop_transaction.object.push_auth_to_invite().to_string());
+                        transaction = Some(
+                            loop_transaction
+                                .object
+                                .push_auth_to_invite(response.status_code.clone())
+                                .to_string(),
+                        );
                         break;
                     }
                 }
@@ -352,6 +368,9 @@ pub fn process_response_outbound(
                                 tag_remote: Some(remote_tag.to_string()),
                                 md5: None,
                                 nonce: None,
+                                nc: None,
+                                cnonce: None,
+                                qop: false
                             };
 
                             let via_from_invite = loop_transaction

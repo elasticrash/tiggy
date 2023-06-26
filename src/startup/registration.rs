@@ -45,6 +45,9 @@ pub fn register_ua(state: &Arc<Mutex<State>>, conf: &JSONConfiguration, ip: &IpA
         call_id: Uuid::new_v4().to_string(),
         tag_local: Uuid::new_v4().to_string(),
         tag_remote: None,
+        nc: None,
+        cnonce: None,
+        qop: false,
     };
 
     let mut transaction: Option<String> = None;

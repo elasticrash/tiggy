@@ -11,7 +11,7 @@ use crate::{
     processor::message::Message,
     startup::registration::unregister_ua,
     state::{
-        dialogs::{State, Direction},
+        dialogs::{Direction, State},
         options::{SelfConfiguration, Verbosity},
     },
 };

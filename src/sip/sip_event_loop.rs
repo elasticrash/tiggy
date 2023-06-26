@@ -12,7 +12,7 @@ use crate::{
         outbound::{process_request_outbound, process_response_outbound},
     },
     state::{
-        dialogs::{State, Direction},
+        dialogs::{Direction, State},
         options::{SelfConfiguration, Verbosity},
     },
     transmissions::sockets::{peek, receive, send},

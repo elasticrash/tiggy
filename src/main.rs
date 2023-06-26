@@ -49,6 +49,8 @@ use std::{thread, time::Duration};
 // use crate::pcap::capture;
 use crate::startup::registration::unregister_ua;
 use crate::transmissions::sockets::MpscBase;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
 
 #[macro_use]
 extern crate rocket;
@@ -79,13 +81,12 @@ fn toggle_log(tr: &State<SyncSender<Message>>) -> status::Accepted<String> {
 fn rocket() -> _ {
     let conf = config::read("./config.json").unwrap();
 
-    let interface = match get_ipv4() {
+    let _interface = match get_ipv4() {
         Ok(ipv4) => ipv4,
         Err(why) => panic!("{}", why),
     };
 
-    let ip = interface.addr.ip();
-
+    let ip = IpAddr::V4(Ipv4Addr::new(172, 20, 169, 74));
     // PCAP
     // let pcap_conf = conf.clone();
     // tokio::spawn(async move {
@@ -124,7 +125,7 @@ fn rocket() -> _ {
 
     let local_conf = SelfConfiguration {
         flow: Direction::Inbound,
-        verbosity: Verbosity::Minimal,
+        verbosity: Verbosity::Extreme,
         ip,
     };
 

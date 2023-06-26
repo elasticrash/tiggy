@@ -1,7 +1,7 @@
 use crate::composer::header_extension::PartialHeaderClone;
 use crate::state::options::SipOptions;
 use rsip::headers::{Allow, UntypedHeader, UserAgent};
-use rsip::{headers::auth, Header, SipMessage};
+use rsip::{headers::auth, Header, SipMessage, StatusCode};
 
 use super::helper::{get_base_uri, get_contact, get_from, get_to, get_via};
 
@@ -45,11 +45,7 @@ impl SipOptions {
             method: rsip::Method::Register,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
-                host_with_port: rsip::Domain::from(format!(
-                    "{}:{}",
-                    &self.sip_server, &self.sip_port
-                ))
-                .into(),
+                host_with_port: rsip::Domain::from(format!("{}", &self.sip_server)).into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,
@@ -69,11 +65,7 @@ impl SipOptions {
             method: rsip::Method::Register,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
-                host_with_port: rsip::Domain::from(format!(
-                    "{}:{}",
-                    &self.sip_server, &self.sip_port
-                ))
-                .into(),
+                host_with_port: rsip::Domain::from(format!("{}", &self.sip_server)).into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,
@@ -93,11 +85,7 @@ impl SipOptions {
             method: rsip::Method::Register,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
-                host_with_port: rsip::Domain::from(format!(
-                    "{}:{}",
-                    &self.sip_server, &self.sip_port
-                ))
-                .into(),
+                host_with_port: rsip::Domain::from(format!("{}", &self.sip_server)).into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,
@@ -111,31 +99,42 @@ impl SipOptions {
 }
 
 impl SipOptions {
-    pub fn push_auth_to_register(&self) -> SipMessage {
+    pub fn push_auth_to_register(&self, code: StatusCode) -> SipMessage {
         let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
 
-        headers.push(
-            rsip::typed::Authorization {
-                scheme: auth::Scheme::Digest,
-                username: self.username.to_string(),
-                realm: self.sip_server.to_string(),
-                nonce: self.nonce.as_ref().unwrap().to_string(),
-                uri: rsip::Uri {
-                    scheme: Some(rsip::Scheme::Sip),
-                    host_with_port: rsip::Domain::from(format!(
-                        "{}@{}:{}",
-                        &self.extension, &self.sip_server, &self.sip_port
-                    ))
-                    .into(),
-                    ..Default::default()
-                },
-                response: self.md5.as_ref().unwrap().to_string(),
-                algorithm: Some(auth::Algorithm::Md5),
-                opaque: None,
-                qop: None,
-            }
-            .into(),
-        );
+        let auth = rsip::typed::Authorization {
+            scheme: auth::Scheme::Digest,
+            username: self.username.to_string(),
+            realm: self.sip_server.to_string(),
+            nonce: self.nonce.as_ref().unwrap().to_string(),
+            uri: rsip::Uri {
+                scheme: Some(rsip::Scheme::Sip),
+                host_with_port: rsip::Domain::from(format!(
+                    "{}:{}",
+                    &self.sip_server, &self.sip_port
+                ))
+                .into(),
+                ..Default::default()
+            },
+            response: self.md5.as_ref().unwrap().to_string(),
+            algorithm: Some(auth::Algorithm::Md5),
+            opaque: None,
+            qop: if self.qop {
+                Some(auth::AuthQop::Auth {
+                    cnonce: self.cnonce.as_ref().unwrap().to_string(),
+                    nc: self.nc.unwrap(),
+                })
+            } else {
+                None
+            },
+        };
+
+        headers.push(if code == StatusCode::Unauthorized {
+            auth.into()
+        } else {
+            rsip::typed::ProxyAuthorization(auth).into()
+        });
+
         headers.push(Header::Allow(Allow::new(
             "ACK,BYE,CANCEL,INFO,INVITE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
         )));
@@ -144,11 +143,7 @@ impl SipOptions {
             method: rsip::Method::Register,
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
-                host_with_port: rsip::Domain::from(format!(
-                    "{}:{}",
-                    &self.sip_server, &self.sip_port
-                ))
-                .into(),
+                host_with_port: rsip::Domain::from(format!("{}", &self.sip_server)).into(),
                 ..Default::default()
             },
             version: rsip::Version::V2,

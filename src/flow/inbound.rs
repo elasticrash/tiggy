@@ -1,5 +1,5 @@
 use crate::{
-    commands::{auth::Auth, helper::get_nonce, ok::ok, trying::trying},
+    commands::{auth::Auth, auth::AuthModel, ok::ok, trying::trying},
     config::JSONConfiguration,
     state::{
         dialogs::{Direction, State},
@@ -12,7 +12,7 @@ use rsip::{
     headers::ToTypedHeader,
     message::HasHeaders,
     message::HeadersExt,
-    typed::{Via, WwwAuthenticate},
+    typed::{ProxyAuthenticate, Via, WwwAuthenticate},
     Header, Request, Response, StatusCode,
 };
 use std::{
@@ -198,16 +198,28 @@ pub fn process_response_inbound(
             let proxy_auth = header_opt!(response.headers().iter(), Header::ProxyAuthenticate);
 
             if www_auth.is_some() || proxy_auth.is_some() {
-                let nonce = if let Some(..) = www_auth {
-                    WwwAuthenticate::try_from(www_auth.unwrap().clone())
-                        .unwrap()
-                        .nonce
+                let auth_model: AuthModel = if let Some(..) = www_auth {
+                    AuthModel {
+                        nonce: WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                            .unwrap()
+                            .nonce,
+                        realm: WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                            .unwrap()
+                            .realm,
+                        qop: WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                            .unwrap()
+                            .qop,
+                    }
                 } else {
-                    let pa_string = proxy_auth.unwrap().clone();
-                    get_nonce(&pa_string.to_string()).to_string()
-                };
+                    let www_auth_from_proxy =
+                        ProxyAuthenticate::try_from(proxy_auth.unwrap().clone()).unwrap();
 
-                info!("nonce {}", nonce);
+                    AuthModel {
+                        nonce: (www_auth_from_proxy).0.nonce,
+                        realm: (www_auth_from_proxy).0.realm,
+                        qop: (www_auth_from_proxy).0.qop,
+                    }
+                };
 
                 let mut transaction: Option<String> = None;
                 {
@@ -218,12 +230,20 @@ pub fn process_response_inbound(
                         if matches!(dg.diag_type, Direction::Inbound) {
                             let mut transactions = dg.transactions.get_transactions().unwrap();
                             let mut local_transaction = transactions.first_mut().unwrap();
-                            local_transaction.object.nonce = Some(nonce);
-                            local_transaction.object.set_auth(conf, "REGISTER");
+                            local_transaction.object.nonce = Some(auth_model.nonce.clone());
+                            local_transaction.object.set_auth(
+                                conf,
+                                "REGISTER",
+                                &auth_model.clone(),
+                            );
                             local_transaction.object.msg = local_transaction.local.clone();
 
-                            transaction =
-                                Some(local_transaction.object.push_auth_to_register().to_string());
+                            transaction = Some(
+                                local_transaction
+                                    .object
+                                    .push_auth_to_register(response.status_code.clone())
+                                    .to_string(),
+                            );
                             break;
                         }
                     }

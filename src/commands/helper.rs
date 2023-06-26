@@ -98,20 +98,6 @@ pub fn get_remote_tag(hstr: &str) -> &str {
     rem
 }
 
-pub fn get_nonce(hstr: &str) -> &str {
-    let (rem, (_, _)): (&str, (&str, &str)) = tuple((
-        take_until::<&str, &str, Error<&str>>("nonce="),
-        tag("nonce"),
-    ))(hstr)
-    .unwrap();
-
-    let mut chars = rem.chars();
-    chars.next();
-    chars.next();
-    chars.next_back();
-    chars.as_str()
-}
-
 pub fn get_address_from_contact(hstr: String) -> (String, u16) {
     let (rem, (_, _)): (&str, (&str, &str)) =
         tuple((take_until::<&str, &str, Error<&str>>("sip:"), tag("sip:")))(&hstr).unwrap();
