@@ -79,14 +79,15 @@ fn toggle_log(tr: &State<SyncSender<Message>>) -> status::Accepted<String> {
 
 #[launch]
 fn rocket() -> _ {
-    let conf = config::read("./config.json").unwrap();
+    let conf = config::read("./edify.json").unwrap();
 
-    let _interface = match get_ipv4() {
+    let interface = match get_ipv4() {
         Ok(ipv4) => ipv4,
         Err(why) => panic!("{}", why),
     };
 
-    let ip = IpAddr::V4(Ipv4Addr::new(172, 20, 169, 74));
+    let ip = interface.addr.ip();
+
     // PCAP
     // let pcap_conf = conf.clone();
     // tokio::spawn(async move {
