@@ -72,7 +72,11 @@ impl SipOptions {
 
 impl SipOptions {
     pub fn push_auth_to_invite(&self, code: StatusCode) -> SipMessage {
-        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
+        let headers = &mut self
+            .msg
+            .as_ref()
+            .unwrap()
+            .partial_header_clone(false, false);
 
         headers.push(rsip::headers::ContentType::from("application/sdp").into());
 
@@ -84,12 +88,17 @@ impl SipOptions {
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
-                    "{}@{}:{}",
-                    &self.extension, &self.sip_server, &self.sip_port
+                    "{}{}:{}",
+                    format!("{}@", &self.cld.as_ref().unwrap_or(&"".to_string())),
+                    &self.sip_server,
+                    &self.sip_port
                 ))
                 .into(),
                 ..Default::default()
             },
+            response: self.md5.as_ref().unwrap().to_string(),
+            algorithm: Some(auth::Algorithm::Md5),
+            opaque: None,
             qop: if self.qop {
                 Some(auth::AuthQop::Auth {
                     cnonce: self.cnonce.as_ref().unwrap().to_string(),
@@ -98,9 +107,6 @@ impl SipOptions {
             } else {
                 None
             },
-            response: self.md5.as_ref().unwrap().to_string(),
-            algorithm: Some(auth::Algorithm::Md5),
-            opaque: None,
         };
 
         headers.push(if code == StatusCode::Unauthorized {

@@ -20,9 +20,9 @@ impl Auth for SipOptions {
             &conf.username, &auth_model.realm, &conf.password
         );
         let ha2 = format!(
-            "{}:sip:{}@{}:{}",
+            "{}:sip:{}{}:{}",
             &String::from(method),
-            &self.extension,
+            format!("{}@", &self.cld.as_ref().unwrap_or(&"".to_string())),
             &self.sip_server,
             &self.sip_port
         );
@@ -55,6 +55,7 @@ impl Auth for SipOptions {
             )
         };
 
+        // println!("cmd5: {}", cmd5);
         let md5 = format!("{:x}", md5::compute(cmd5));
 
         self.nonce = Some(auth_model.nonce.to_string());
@@ -88,6 +89,7 @@ mod tests {
             tag_remote: None,
             cnonce: None,
             nc: None,
+            qop: false,
         };
 
         options.set_auth(

@@ -38,21 +38,25 @@ impl CustomHeaderExtension for Headers {
 }
 
 pub trait PartialHeaderClone {
-    fn partial_header_clone(&self, skip_cseq: bool) -> Headers;
+    fn partial_header_clone(&self, skip_cseq: bool, skip_expires: bool) -> Headers;
 }
 
 impl PartialHeaderClone for SipMessage {
-    fn partial_header_clone(&self, skip_cseq: bool) -> Headers {
+    fn partial_header_clone(&self, skip_cseq: bool, skip_expires: bool) -> Headers {
         let mut headers: Headers = Default::default();
         headers.push(self.via_header().unwrap().clone().into());
         headers.push(self.max_forwards_header().unwrap().clone().into());
         headers.push(self.from_header().unwrap().clone().into());
         headers.push(self.to_header().unwrap().clone().into());
-        headers.push(self.contact_header().unwrap().clone().into());
+
+        if self.contact_header().is_ok() {
+            headers.push(self.contact_header().unwrap().clone().into());
+        }
+
         headers.push(self.call_id_header().unwrap().clone().into());
         headers.push(self.user_agent_header().unwrap().clone().into());
 
-        if self.expires_header().is_some() {
+        if self.expires_header().is_some() && !skip_expires {
             headers.push(self.expires_header().unwrap().clone().into());
         }
 

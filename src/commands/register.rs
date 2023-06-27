@@ -58,8 +58,8 @@ impl SipOptions {
     }
 
     pub fn unregister(&self) -> SipMessage {
-        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
-        headers.push(rsip::headers::Expires::from(5).into());
+        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false, true);
+        headers.push(rsip::headers::Expires::from(0).into());
 
         let request: SipMessage = rsip::Request {
             method: rsip::Method::Register,
@@ -78,7 +78,11 @@ impl SipOptions {
     }
 
     pub fn keep_alive(&self) -> SipMessage {
-        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
+        let headers = &mut self
+            .msg
+            .as_ref()
+            .unwrap()
+            .partial_header_clone(false, false);
         headers.push(rsip::headers::Expires::from(120).into());
 
         let request: SipMessage = rsip::Request {
@@ -100,7 +104,11 @@ impl SipOptions {
 
 impl SipOptions {
     pub fn push_auth_to_register(&self, code: StatusCode) -> SipMessage {
-        let headers = &mut self.msg.as_ref().unwrap().partial_header_clone(false);
+        let headers = &mut self
+            .msg
+            .as_ref()
+            .unwrap()
+            .partial_header_clone(false, false);
 
         let auth = rsip::typed::Authorization {
             scheme: auth::Scheme::Digest,
@@ -110,8 +118,10 @@ impl SipOptions {
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
-                    "{}@{}:{}",
-                    &self.extension, &self.sip_server, &self.sip_port
+                    "{}{}:{}",
+                    format!("{}@", &self.cld.as_ref().unwrap_or(&"".to_string())),
+                    &self.sip_server,
+                    &self.sip_port
                 ))
                 .into(),
                 ..Default::default()
