@@ -192,8 +192,6 @@ pub fn process_response_inbound(
         StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
             // TODO: this part needs to be a bit more generic
             // Now its too specific for registrations
-            info!("i/composing register response");
-
             let www_auth = header_opt!(response.headers().iter(), Header::WwwAuthenticate);
             let proxy_auth = header_opt!(response.headers().iter(), Header::ProxyAuthenticate);
 

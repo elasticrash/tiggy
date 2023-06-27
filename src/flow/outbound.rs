@@ -318,16 +318,15 @@ pub fn process_response_outbound(
     state: &Arc<Mutex<State>>,
     settings: &mut SelfConfiguration,
 ) {
-    let via = header_opt!(response.headers().iter(), Header::Via);
-
     match response.status_code {
         StatusCode::Trying => {}
         StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
+
+            ack_invite(response, conf, state, settings);
             let www_auth = header_opt!(response.headers().iter(), Header::WwwAuthenticate);
             let proxy_auth = header_opt!(response.headers().iter(), Header::ProxyAuthenticate);
 
             if www_auth.is_some() || proxy_auth.is_some() {
-                ack_invite(response, conf, state, settings);
                 let auth_model: AuthModel = if let Some(..) = www_auth {
                     AuthModel {
                         nonce: WwwAuthenticate::try_from(www_auth.unwrap().clone())
@@ -388,7 +387,7 @@ pub fn process_response_outbound(
                     let mut locked_state = state.lock().unwrap();
                     let channel = locked_state.get_sip_channel().unwrap();
 
-                    channel
+                    /*channel
                         .0
                         .send(MpscBase {
                             event: Some(SocketV4 {
@@ -398,7 +397,7 @@ pub fn process_response_outbound(
                             }),
                             exit: false,
                         })
-                        .unwrap();
+                        .unwrap();*/
                 }
             }
         }

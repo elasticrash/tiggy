@@ -97,7 +97,19 @@ impl SipOptions {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
-        headers.push(Header::Via(via.clone()));
+        headers.push(
+            rsip::typed::Via {
+                version: rsip::Version::V2,
+                transport: rsip::Transport::Udp,
+                params: vec![
+                    rsip::Param::Branch(via.branch().clone().unwrap()),
+                    rsip::Param::Other("rport".into(), None),
+                ],
+                uri: via.uri().clone().unwrap(),
+            }
+            .into(),
+        );
+
         headers.push(
             rsip::typed::From {
                 display_name: Some(self.username.to_string()),
@@ -109,7 +121,7 @@ impl SipOptions {
 
         headers.push(
             rsip::typed::To {
-                display_name: Some(self.cld.as_ref().unwrap().to_string()),
+                display_name: None,
                 uri: rsip::Uri {
                     auth: None,
                     host_with_port: rsip::Domain::from(format!(
