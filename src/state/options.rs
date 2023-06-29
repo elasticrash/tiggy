@@ -15,12 +15,14 @@ pub struct SipOptions {
     pub nonce: Option<String>,
     pub cnonce: Option<String>,
     pub nc: Option<u8>,
+    pub opaque: Option<String>,
     pub qop: bool,
     pub msg: Option<SipMessage>,
     pub cld: Option<String>,
     pub call_id: String,
     pub tag_local: String,
     pub tag_remote: Option<String>,
+    pub realm: String,
 }
 
 pub struct SelfConfiguration {

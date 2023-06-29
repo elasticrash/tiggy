@@ -207,6 +207,9 @@ pub fn process_response_inbound(
                         qop: WwwAuthenticate::try_from(www_auth.unwrap().clone())
                             .unwrap()
                             .qop,
+                        opaque: WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                            .unwrap()
+                            .opaque,
                     }
                 } else {
                     let www_auth_from_proxy =
@@ -216,6 +219,7 @@ pub fn process_response_inbound(
                         nonce: (www_auth_from_proxy).0.nonce,
                         realm: (www_auth_from_proxy).0.realm,
                         qop: (www_auth_from_proxy).0.qop,
+                        opaque: (www_auth_from_proxy).0.opaque,
                     }
                 };
 

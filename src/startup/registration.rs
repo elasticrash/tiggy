@@ -48,6 +48,8 @@ pub fn register_ua(state: &Arc<Mutex<State>>, conf: &JSONConfiguration, ip: &IpA
         nc: None,
         cnonce: None,
         qop: false,
+        opaque: None,
+        realm: "".to_string(),
     };
 
     let mut transaction: Option<String> = None;

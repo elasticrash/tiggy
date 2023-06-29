@@ -62,12 +62,14 @@ pub fn outbound_configure(
         cld: Some(destination.to_string()),
         md5: None,
         nonce: None,
+        opaque: None,
         call_id: call_id.clone(),
         tag_local: Uuid::new_v4().to_string(),
         tag_remote: None,
         nc: None,
         cnonce: None,
         qop: false,
+        realm: "".to_string(),
     };
 
     let dialog = Dialog {
@@ -190,6 +192,8 @@ pub fn ack_invite(
                     nc: None,
                     cnonce: None,
                     qop: false,
+                    opaque: None,
+                    realm: "".to_string(),
                 };
 
                 let via_from_invite = loop_transaction
@@ -321,7 +325,6 @@ pub fn process_response_outbound(
     match response.status_code {
         StatusCode::Trying => {}
         StatusCode::Unauthorized | StatusCode::ProxyAuthenticationRequired => {
-
             ack_invite(response, conf, state, settings);
             let www_auth = header_opt!(response.headers().iter(), Header::WwwAuthenticate);
             let proxy_auth = header_opt!(response.headers().iter(), Header::ProxyAuthenticate);
@@ -338,6 +341,9 @@ pub fn process_response_outbound(
                         qop: WwwAuthenticate::try_from(www_auth.unwrap().clone())
                             .unwrap()
                             .qop,
+                        opaque: WwwAuthenticate::try_from(www_auth.unwrap().clone())
+                            .unwrap()
+                            .opaque,
                     }
                 } else {
                     let www_auth_from_proxy =
@@ -347,6 +353,7 @@ pub fn process_response_outbound(
                         nonce: (www_auth_from_proxy).0.nonce,
                         realm: (www_auth_from_proxy).0.realm,
                         qop: (www_auth_from_proxy).0.qop,
+                        opaque: (www_auth_from_proxy).0.opaque,
                     }
                 };
                 let mut transaction: Option<String> = None;
@@ -387,7 +394,7 @@ pub fn process_response_outbound(
                     let mut locked_state = state.lock().unwrap();
                     let channel = locked_state.get_sip_channel().unwrap();
 
-                    /*channel
+                    channel
                         .0
                         .send(MpscBase {
                             event: Some(SocketV4 {
@@ -397,7 +404,7 @@ pub fn process_response_outbound(
                             }),
                             exit: false,
                         })
-                        .unwrap();*/
+                        .unwrap();
                 }
             }
         }
@@ -492,6 +499,8 @@ pub fn process_response_outbound(
                                 nc: None,
                                 cnonce: None,
                                 qop: false,
+                                opaque: None,
+                                realm: "".to_string(),
                             };
 
                             let via_from_invite = loop_transaction
