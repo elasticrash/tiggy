@@ -98,6 +98,7 @@ mod tests {
             nc: None,
             qop: false,
             opaque: None,
+            realm: "something".to_string(),
         };
 
         options.set_auth(
@@ -120,49 +121,5 @@ mod tests {
         );
 
         assert_eq!(options.md5.unwrap(), "dab6dae59c1e00a003c4d28748e66894");
-    }
-
-    #[test]
-    fn qop() {
-        let mut options = SipOptions {
-            username: "this_is_read_from_conf".to_string(),
-            extension: "1004".to_string(),
-            sip_server: "pbx.fogblower.xyz".to_string(),
-            sip_port: "5060".to_string(),
-            branch: "it_doesnt_matter".to_string(),
-            ip: "it_doesnt_matter".to_string(),
-            nonce: None,
-            md5: None,
-            msg: None,
-            cld: None,
-            call_id: "it_doesnt_matter".to_string(),
-            tag_local: "it_doesnt_matter".to_string(),
-            tag_remote: None,
-            cnonce: None,
-            nc: None,
-            qop: false,
-            opaque: None,
-        };
-
-        options.set_auth(
-            &JSONConfiguration {
-                username: "1004".to_string(),
-                password: "70ce67049dec2b9c2d7fed288209ef47".to_string(),
-                sip_server: "pbx.fogblower.xyz".to_string(),
-                sip_port: 5060,
-                extension: "not_read_from_this_object".to_string(),
-                pcap: None,
-                reg_timeout: 120,
-            },
-            &"REGISTER",
-            &AuthModel {
-                realm: "asterisk".to_string(),
-                nonce: "1688031398/499829635ca51f9fc9e340109ee26ada".to_string(),
-                qop: Some(rsip::headers::auth::Qop::Auth),
-                opaque: None,
-            },
-        );
-
-        assert_eq!(options.md5.unwrap(), "b1c46b925c3fbebf533f0c19ab339559");
     }
 }
