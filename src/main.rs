@@ -31,6 +31,9 @@ mod rtp;
 /// SIP
 mod sip;
 
+// UTILITIES
+mod util;
+
 ///PCAP
 // mod pcap;
 use menu::menu_commands::send_menu_commands;

@@ -1,5 +1,4 @@
-use crate::{config::JSONConfiguration, state::options::SipOptions};
-use rand::{distributions::Alphanumeric, Rng};
+use crate::{config::JSONConfiguration, state::options::SipOptions, util::random_string};
 use rsip::headers::auth::Qop;
 
 #[derive(Debug, Clone)]
@@ -28,20 +27,13 @@ impl Auth for SipOptions {
             &self.sip_port
         );
 
-        println!("ha1: {}", ha1);
-        println!("ha2: {}", ha2);
+        //println!("ha1: {}", ha1);
+        //println!("ha2: {}", ha2);
 
         let cmd5 = if auth_model.qop.is_some() {
             self.qop = true;
             self.nc = Some(1);
-            self.cnonce = Some(
-              rand::thread_rng()
-                    .sample_iter(&Alphanumeric)
-                    .take(7)
-                    .map(char::from)
-                    .collect::<String>(),
-                //"b5afbfd1045989125ec6d255430b9259".to_string(),
-            );
+            self.cnonce = Some(random_string(7));
 
             format!(
                 "{:x}:{}:0000000{}:{}:{}:{:x}",
@@ -61,7 +53,7 @@ impl Auth for SipOptions {
             )
         };
 
-        println!("cmd5: {}", cmd5);
+        //println!("cmd5: {}", cmd5);
         let md5 = format!("{:x}", md5::compute(cmd5));
 
         self.nonce = Some(auth_model.nonce.to_string());
@@ -77,7 +69,7 @@ mod tests {
         commands::auth::Auth, commands::auth::AuthModel, config::JSONConfiguration,
         state::options::SipOptions,
     };
-    
+
     #[test]
     fn md5_from_config() {
         let mut options = SipOptions {
