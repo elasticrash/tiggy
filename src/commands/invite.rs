@@ -83,22 +83,24 @@ impl SipOptions {
         let auth = rsip::typed::Authorization {
             scheme: auth::Scheme::Digest,
             username: self.username.to_string(),
-            realm: self.sip_server.to_string(),
+            realm: self.realm.to_string(),
             nonce: self.nonce.as_ref().unwrap().to_string(),
             uri: rsip::Uri {
                 scheme: Some(rsip::Scheme::Sip),
                 host_with_port: rsip::Domain::from(format!(
-                    "{}{}:{}",
-                    format!("{}@", &self.cld.as_ref().unwrap_or(&"".to_string())),
-                    &self.sip_server,
-                    &self.sip_port
+                    "{}@{}:{}",
+                    &self.extension, &self.sip_server, &self.sip_port
                 ))
                 .into(),
                 ..Default::default()
             },
             response: self.md5.as_ref().unwrap().to_string(),
             algorithm: Some(auth::Algorithm::Md5),
-            opaque: None,
+            opaque: if self.opaque.is_some() {
+                Some(self.opaque.as_ref().unwrap().to_string())
+            } else {
+                None
+            },
             qop: if self.qop {
                 Some(auth::AuthQop::Auth {
                     cnonce: self.cnonce.as_ref().unwrap().to_string(),

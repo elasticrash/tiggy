@@ -13,10 +13,11 @@ use crate::{
         options::{SelfConfiguration, SipOptions, Verbosity},
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::{MpscBase, SocketV4},
+    transmissions::sockets::{MpscBase, OverwriteDestination},
 };
 
 use chrono::prelude::*;
+use dns_lookup::lookup_host;
 use rsip::{
     header_opt,
     message::HasHeaders,
@@ -100,7 +101,7 @@ pub fn outbound_configure(
 
 /// Sends the Intial invite for an outbound call
 // TODO pass identifier for the call
-pub fn outbound_start(conf: &JSONConfiguration, state: Arc<Mutex<State>>, vrb: &Verbosity) {
+pub fn outbound_start(_conf: &JSONConfiguration, state: Arc<Mutex<State>>, vrb: &Verbosity) {
     let mut transaction: Option<String> = None;
     {
         let state: Arc<Mutex<State>> = state.clone();
@@ -117,7 +118,7 @@ pub fn outbound_start(conf: &JSONConfiguration, state: Arc<Mutex<State>>, vrb: &
                     vrb,
                 );
 
-                let mut loop_transaction = transactions.last_mut().unwrap();
+                let loop_transaction = transactions.last_mut().unwrap();
                 loop_transaction.local = loop_transaction.object.set_initial_invite().into();
 
                 transaction = Some(loop_transaction.local.clone().unwrap().to_string());
@@ -133,12 +134,9 @@ pub fn outbound_start(conf: &JSONConfiguration, state: Arc<Mutex<State>>, vrb: &
         channel
             .0
             .send(MpscBase {
-                event: Some(SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                    bytes: transaction.unwrap().as_bytes().to_vec(),
-                }),
+                event: Some(transaction.unwrap().as_bytes().to_vec()),
                 exit: false,
+                ..Default::default()
             })
             .unwrap();
     }
@@ -160,7 +158,7 @@ pub fn ack_invite(
             if matches!(dg.diag_type, Direction::Outbound) {
                 let mut transactions = dg.transactions.get_transactions().unwrap();
 
-                let mut loop_transaction = transactions.last_mut().unwrap();
+                let loop_transaction = transactions.last_mut().unwrap();
                 loop_transaction.local = loop_transaction.object.set_initial_invite().into();
 
                 let hstr = response.clone().to_header().unwrap().to_string();
@@ -234,12 +232,9 @@ pub fn ack_invite(
         channel
             .0
             .send(MpscBase {
-                event: Some(SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                    bytes: transaction.unwrap().as_bytes().to_vec(),
-                }),
+                event: Some(transaction.unwrap().as_bytes().to_vec()),
                 exit: false,
+                ..Default::default()
             })
             .unwrap();
     }
@@ -255,6 +250,7 @@ pub fn process_request_outbound(
     let channel = locked_state.get_sip_channel().unwrap();
 
     let via: Via = request.via_header().unwrap().typed().unwrap();
+    let ips: Vec<std::net::IpAddr> = lookup_host(&via.uri.host().to_string()).unwrap();
 
     match request.method {
         Method::Ack => todo!(),
@@ -263,10 +259,8 @@ pub fn process_request_outbound(
             channel
                 .0
                 .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: via.uri.host().to_string(),
-                        port: 5060,
-                        bytes: ok(
+                    event: Some(
+                        ok(
                             conf,
                             &settings.ip.clone().to_string(),
                             request,
@@ -276,8 +270,12 @@ pub fn process_request_outbound(
                         .to_string()
                         .as_bytes()
                         .to_vec(),
-                    }),
+                    ),
                     exit: false,
+                    override_default_destination: Some(OverwriteDestination {
+                        ip: ips[0],
+                        port: conf.sip_port,
+                    }),
                 })
                 .unwrap();
         }
@@ -290,10 +288,8 @@ pub fn process_request_outbound(
             channel
                 .0
                 .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: via.uri.host().to_string(),
-                        port: 5060,
-                        bytes: ok(
+                    event: Some(
+                        ok(
                             conf,
                             &settings.ip.clone().to_string(),
                             request,
@@ -303,8 +299,9 @@ pub fn process_request_outbound(
                         .to_string()
                         .as_bytes()
                         .to_vec(),
-                    }),
+                    ),
                     exit: false,
+                    ..Default::default()
                 })
                 .unwrap();
         }
@@ -368,7 +365,7 @@ pub fn process_response_outbound(
 
                             let tr_len = transactions.clone().len();
 
-                            let mut loop_transaction = transactions.get_mut(tr_len - 2).unwrap();
+                            let loop_transaction = transactions.get_mut(tr_len - 2).unwrap();
                             if loop_transaction.object.nonce.is_some() {
                                 break;
                             }
@@ -397,12 +394,9 @@ pub fn process_response_outbound(
                     channel
                         .0
                         .send(MpscBase {
-                            event: Some(SocketV4 {
-                                ip: conf.clone().sip_server,
-                                port: conf.clone().sip_port,
-                                bytes: transaction.unwrap().as_bytes().to_vec(),
-                            }),
+                            event: Some(transaction.unwrap().as_bytes().to_vec()),
                             exit: false,
+                            ..Default::default()
                         })
                         .unwrap();
                 }
@@ -416,7 +410,7 @@ pub fn process_response_outbound(
             for dg in dialogs.iter_mut().rev() {
                 if matches!(dg.diag_type, Direction::Outbound) {
                     let mut transactions = dg.transactions.get_transactions().unwrap();
-                    let mut transaction = transactions.last_mut().unwrap();
+                    let transaction = transactions.last_mut().unwrap();
                     transaction.remote = Some(SipMessage::Response(response.clone()));
                     break;
                 }
@@ -560,15 +554,17 @@ pub fn process_response_outbound(
                     None => get_address_from_contact(c_header),
                 };
 
+                let ips: Vec<std::net::IpAddr> = lookup_host(&curi.0).unwrap();
+
                 channel
                     .0
                     .send(MpscBase {
-                        event: Some(SocketV4 {
-                            ip: curi.0.to_string(),
-                            port: curi.1,
-                            bytes: transaction.unwrap().as_bytes().to_vec(),
-                        }),
+                        event: Some(transaction.unwrap().as_bytes().to_vec()),
                         exit: false,
+                        override_default_destination: Some(OverwriteDestination {
+                            ip: ips[0],
+                            port: curi.1,
+                        }),
                     })
                     .unwrap();
             }

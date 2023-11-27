@@ -1,4 +1,4 @@
-use crate::transmissions::sockets::{MpscBase, SocketV4};
+use crate::transmissions::sockets::MpscBase;
 
 use super::transactions::Transaction;
 use chrono::prelude::*;
@@ -69,7 +69,7 @@ impl<T> From<PoisonError<T>> for StateLockError {
     }
 }
 
-pub type UdpCommand = MpscBase<SocketV4>;
+pub type UdpCommand = MpscBase<Vec<u8>>;
 type SRUdpCommand = (Sender<UdpCommand>, Receiver<UdpCommand>);
 
 impl State {

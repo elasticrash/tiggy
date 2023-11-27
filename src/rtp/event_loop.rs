@@ -2,18 +2,15 @@ use pnet_macros_support::packet::Packet;
 use rand::Rng;
 use std::{
     f64::consts::PI,
-    net::{IpAddr, UdpSocket},
+    net::IpAddr,
     sync::{Arc, Mutex},
 };
 use tokio::task::JoinHandle;
 
 use crate::{
-    rtp::MutableRtpPacket,
-    rtp::RtpType,
-    state::{dialogs::State, options::Verbosity},
-    transmissions::sockets::{peek, receive_base, send, MpscBase, SocketV4},
+    rtp::MutableRtpPacket, rtp::RtpType, state::dialogs::State, transmissions::sockets::MpscBase,
 };
-use std::time::Duration;
+use udp_polygon::{config::Address, config::Config, config::FromArguments, Polygon};
 
 #[allow(dead_code)]
 const SAMPLE_RATE: f64 = 44_100.0;
@@ -27,22 +24,29 @@ const ALAW_MAX: i16 = 0x0FFF;
 #[allow(dead_code)]
 pub fn rtp_event_loop(
     c_connection: &IpAddr,
-    port: u16,
+    _port: u16,
     dialog_state: Arc<Mutex<State>>,
     r_connection: &IpAddr,
     rtp_port: u16,
 ) -> JoinHandle<()> {
     let connection = *c_connection;
     let rtp_connection = *r_connection;
+    let udp_config = Config::from_arguments(
+        vec![Address {
+            ip: connection,
+            port: rtp_port,
+        }],
+        Some(Address {
+            ip: rtp_connection,
+            port: 5060,
+        }),
+    );
+
+    let mut polygon = Polygon::configure(udp_config);
+    let rx = polygon.receive();
 
     tokio::spawn(async move {
-        let mut socket = UdpSocket::bind(format!("0.0.0.0:{}", rtp_port)).unwrap();
-        let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
-        socket
-            .connect(format!("{}:{}", &connection, &port))
-            .expect("connect function failed");
-
-        let mut rtp_buffer = [0_u8; 65535];
+        let mut _rtp_buffer = [0_u8; 65535];
         let mut phase = 0.0;
 
         let mut rng = rand::thread_rng();
@@ -51,8 +55,6 @@ pub fn rtp_event_loop(
         let n3: u32 = rng.gen();
         let proper_loop = 0;
 
-        info!("target rtp located : {:?}:{:?}", rtp_connection, rtp_port);
-        info!("source rtp located : {:?}:{}", connection, 49152);
         info!("starting rtp event loop");
 
         'thread: loop {
@@ -108,30 +110,18 @@ pub fn rtp_event_loop(
             channel
                 .0
                 .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: rtp_connection.to_string(),
-                        port: rtp_port,
-                        bytes: packet.consume_to_immutable().packet().to_vec(),
-                    }),
+                    event: Some(packet.consume_to_immutable().packet().to_vec()),
                     exit: false,
+                    ..Default::default()
                 })
                 .unwrap();
 
             n2 = proper_loop + 1;
 
-            // peek on the socket, for pending messages
-            let mut maybe_msg: Option<Vec<u8>> = None;
-            {
-                let packets_queued = peek(&mut socket, &mut rtp_buffer);
-
-                if packets_queued > 0 {
-                    maybe_msg = Some(receive_base(&mut socket, &mut rtp_buffer));
-                    info!("rtp package received");
-                }
-            }
+            let maybe_msg = rx.try_recv();
 
             // distribute message on the correct process
-            if let Some(..) = maybe_msg {
+            if let Ok(..) = maybe_msg {
                 let msg = maybe_msg.unwrap();
                 info!("{}", String::from_utf8_lossy(&msg));
             }
@@ -140,7 +130,7 @@ pub fn rtp_event_loop(
                 if data.exit {
                     break 'thread;
                 }
-                send(&mut socket, &data.event.unwrap(), &Verbosity::Quiet);
+                polygon.send(data.event.unwrap().into());
             }
         }
     })

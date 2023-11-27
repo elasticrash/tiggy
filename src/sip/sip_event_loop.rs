@@ -1,9 +1,12 @@
+use crate::{slog::udp_logger, state::options::Verbosity};
+use dns_lookup::lookup_host;
 use rsip::SipMessage;
 use std::{
-    net::UdpSocket,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex},
 };
 use tokio::task::JoinHandle;
+use yansi::Paint;
 
 use crate::{
     config::JSONConfiguration,
@@ -13,11 +16,12 @@ use crate::{
     },
     state::{
         dialogs::{Direction, State},
-        options::{SelfConfiguration, Verbosity},
+        options::SelfConfiguration,
     },
-    transmissions::sockets::{peek, receive, send},
 };
-use std::time::Duration;
+use udp_polygon::{config::Address, config::Config, config::FromArguments, Polygon};
+
+const VERBOSITY: Verbosity = Verbosity::Minimal;
 
 pub fn sip_event_loop(
     c_conf: &JSONConfiguration,
@@ -28,39 +32,42 @@ pub fn sip_event_loop(
     let arc_settings: Arc<Mutex<SelfConfiguration>> = Arc::clone(c_settings);
     let conf = c_conf.clone();
 
+    let ips: Vec<std::net::IpAddr> = lookup_host(&conf.sip_server).unwrap();
+
+    let udp_config = Config::from_arguments(
+        vec![Address {
+            ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+            port: conf.sip_port,
+        }],
+        Some(Address {
+            ip: ips[0],
+            port: conf.sip_port,
+        }),
+    );
+
+    println!("Listening on: {:?}", udp_config);
+
+    let mut polygon = Polygon::configure(udp_config);
+    let rx = polygon.receive();
+
     tokio::spawn(async move {
         let dialog_state = state;
 
-        let mut socket = UdpSocket::bind(format!("0.0.0.0:{}", 5060)).unwrap();
-        let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
-        socket
-            .connect(format!("{}:{}", &conf.sip_server, &conf.sip_port))
-            .expect("connect function failed");
-
-        let verbosity: Verbosity;
-        let mut sip_buffer = [0_u8; 65535];
-        {
-            let settings = arc_settings.lock().unwrap();
-            verbosity = settings.verbosity.clone();
-        }
+        let mut _sip_buffer = [0_u8; 65535];
 
         'thread: loop {
             // peek on the socket, for pending messages
-            let mut maybe_msg: Option<SipMessage> = None;
-            {
-                let packets_queued = peek(&mut socket, &mut sip_buffer);
-
-                if packets_queued > 0 {
-                    maybe_msg = match receive(&mut socket, &mut sip_buffer, &verbosity) {
-                        Ok(buf) => Some(buf),
-                        Err(_) => None,
-                    };
-                }
-            }
+            let maybe_msg = rx.try_recv();
 
             // distribute message on the correct process
-            if let Some(..) = maybe_msg {
-                let msg = maybe_msg.unwrap();
+            if let Ok(..) = maybe_msg {
+                udp_logger(
+                    Paint::yellow(String::from_utf8_lossy(&maybe_msg.clone().unwrap()).to_string())
+                        .to_string(),
+                    &VERBOSITY,
+                );
+
+                let msg = SipMessage::try_from(maybe_msg.unwrap()).unwrap();
                 let mut settings = arc_settings.lock().unwrap();
                 {
                     info!("match flow, {}", settings.flow);
@@ -98,10 +105,24 @@ pub fn sip_event_loop(
             let channel = state.get_sip_channel().unwrap();
 
             if let Ok(data) = channel.1.try_recv() {
+                if data.override_default_destination.is_some() {
+                    polygon.change_destination(SocketAddr::new(
+                        data.override_default_destination.clone().unwrap().ip,
+                        data.override_default_destination.clone().unwrap().port,
+                    ));
+                }
                 if data.exit {
                     break 'thread;
                 }
-                send(&mut socket, &data.event.unwrap(), &verbosity);
+                udp_logger(
+                    Paint::yellow(
+                        String::from_utf8_lossy(&data.event.clone().unwrap()).to_string(),
+                    )
+                    .to_string(),
+                    &VERBOSITY,
+                );
+                polygon.send(data.event.unwrap());
+                polygon.change_destination(SocketAddr::new(ips[0], conf.sip_port))
             }
         }
     })
