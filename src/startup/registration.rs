@@ -14,7 +14,7 @@ use crate::{
         options::SipOptions,
         transactions::{Transaction, TransactionType},
     },
-    transmissions::sockets::{MpscBase, SocketV4},
+    transmissions::sockets::MpscBase,
 };
 
 /// Preparation for registering the UA,
@@ -97,12 +97,9 @@ pub fn register_ua(state: &Arc<Mutex<State>>, conf: &JSONConfiguration, ip: &IpA
         channel
             .0
             .send(MpscBase {
-                event: Some(SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                    bytes: transaction.unwrap().as_bytes().to_vec(),
-                }),
+                event: Some(transaction.unwrap().as_bytes().to_vec()),
                 exit: false,
+                ..Default::default()
             })
             .unwrap();
     }
@@ -132,12 +129,9 @@ pub fn keep_alive(state: Arc<Mutex<State>>, conf: &JSONConfiguration) {
         channel
             .0
             .send(MpscBase {
-                event: Some(SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                    bytes: sip.unwrap().to_string().as_bytes().to_vec(),
-                }),
+                event: Some(sip.unwrap().to_string().as_bytes().to_vec()),
                 exit: false,
+                ..Default::default()
             })
             .unwrap();
     }
@@ -167,12 +161,9 @@ pub fn unregister_ua(state: Arc<Mutex<State>>, conf: &JSONConfiguration) {
         channel
             .0
             .send(MpscBase {
-                event: Some(SocketV4 {
-                    ip: conf.clone().sip_server,
-                    port: conf.clone().sip_port,
-                    bytes: sip.unwrap().to_string().as_bytes().to_vec(),
-                }),
+                event: Some(sip.unwrap().to_string().as_bytes().to_vec()),
                 exit: false,
+                ..Default::default()
             })
             .unwrap();
     }

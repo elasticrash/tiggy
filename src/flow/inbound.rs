@@ -5,14 +5,12 @@ use crate::{
         dialogs::{Direction, State},
         options::SelfConfiguration,
     },
-    transmissions::sockets::{MpscBase, SocketV4},
+    transmissions::sockets::MpscBase,
 };
 use rsip::{
     header_opt,
-    headers::ToTypedHeader,
     message::HasHeaders,
-    message::HeadersExt,
-    typed::{ProxyAuthenticate, Via, WwwAuthenticate},
+    typed::{ProxyAuthenticate, WwwAuthenticate},
     Header, Request, Response, StatusCode,
 };
 use std::{
@@ -32,8 +30,6 @@ pub fn process_request_inbound(
     let mut locked_state = state.lock().unwrap();
     let channel = locked_state.get_sip_channel().unwrap();
 
-    let via: Via = request.via_header().unwrap().typed().unwrap();
-
     match request.method {
         rsip::Method::Register => {}
         rsip::Method::Ack => {}
@@ -41,10 +37,8 @@ pub fn process_request_inbound(
             channel
                 .0
                 .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: via.uri.host().to_string(),
-                        port: 5060,
-                        bytes: ok(
+                    event: Some(
+                        ok(
                             conf,
                             &settings.ip.clone().to_string(),
                             request,
@@ -54,8 +48,9 @@ pub fn process_request_inbound(
                         .to_string()
                         .as_bytes()
                         .to_vec(),
-                    }),
+                    ),
                     exit: false,
+                    ..Default::default()
                 })
                 .unwrap();
         }
@@ -67,25 +62,22 @@ pub fn process_request_inbound(
             channel
                 .0
                 .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: via.uri.host().to_string(),
-                        port: 5060,
-                        bytes: trying(conf, &settings.ip.clone().to_string(), request)
+                    event: Some(
+                        trying(conf, &settings.ip.clone().to_string(), request)
                             .to_string()
                             .as_bytes()
                             .to_vec(),
-                    }),
+                    ),
                     exit: false,
+                    ..Default::default()
                 })
                 .unwrap();
             thread::sleep(Duration::from_secs(1));
             channel
                 .0
                 .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: via.uri.host().to_string(),
-                        port: 5060,
-                        bytes: ok(
+                    event: Some(
+                        ok(
                             conf,
                             &settings.ip.clone().to_string(),
                             request,
@@ -95,8 +87,9 @@ pub fn process_request_inbound(
                         .to_string()
                         .as_bytes()
                         .to_vec(),
-                    }),
+                    ),
                     exit: false,
+                    ..Default::default()
                 })
                 .unwrap();
 
@@ -135,10 +128,8 @@ pub fn process_request_inbound(
             channel
                 .0
                 .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: via.uri.host().to_string(),
-                        port: 5060,
-                        bytes: ok(
+                    event: Some(
+                        ok(
                             conf,
                             &settings.ip.clone().to_string(),
                             request,
@@ -148,8 +139,9 @@ pub fn process_request_inbound(
                         .to_string()
                         .as_bytes()
                         .to_vec(),
-                    }),
+                    ),
                     exit: false,
+                    ..Default::default()
                 })
                 .unwrap();
         }
@@ -157,10 +149,8 @@ pub fn process_request_inbound(
             channel
                 .0
                 .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: via.uri.host().to_string(),
-                        port: 5060,
-                        bytes: ok(
+                    event: Some(
+                        ok(
                             conf,
                             &settings.ip.clone().to_string(),
                             request,
@@ -170,8 +160,9 @@ pub fn process_request_inbound(
                         .to_string()
                         .as_bytes()
                         .to_vec(),
-                    }),
+                    ),
                     exit: false,
+                    ..Default::default()
                 })
                 .unwrap();
         }
@@ -231,7 +222,7 @@ pub fn process_response_inbound(
                     for dg in registrations.iter_mut() {
                         if matches!(dg.diag_type, Direction::Inbound) {
                             let mut transactions = dg.transactions.get_transactions().unwrap();
-                            let mut local_transaction = transactions.first_mut().unwrap();
+                            let local_transaction = transactions.first_mut().unwrap();
                             local_transaction.object.nonce = Some(auth_model.nonce.clone());
                             local_transaction.object.set_auth(
                                 conf,
@@ -259,12 +250,9 @@ pub fn process_response_inbound(
                     channel
                         .0
                         .send(MpscBase {
-                            event: Some(SocketV4 {
-                                ip: conf.clone().sip_server,
-                                port: conf.clone().sip_port,
-                                bytes: transaction.unwrap().as_bytes().to_vec(),
-                            }),
+                            event: Some(transaction.unwrap().as_bytes().to_vec()),
                             exit: false,
+                            ..Default::default()
                         })
                         .unwrap();
                 }

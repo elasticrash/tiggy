@@ -34,8 +34,8 @@ mod sip;
 // UTILITIES
 mod util;
 
-///PCAP
-// mod pcap;
+use crate::startup::registration::unregister_ua;
+use crate::transmissions::sockets::MpscBase;
 use menu::menu_commands::send_menu_commands;
 use network::get_ipv4;
 use processor::message::{setup_processor, Message, MessageType};
@@ -47,13 +47,6 @@ use state::options::{SelfConfiguration, Verbosity};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::{thread, time::Duration};
-// use uuid::Uuid;
-
-// use crate::pcap::capture;
-use crate::startup::registration::unregister_ua;
-use crate::transmissions::sockets::MpscBase;
-use std::net::IpAddr;
-use std::net::Ipv4Addr;
 
 #[macro_use]
 extern crate rocket;
@@ -90,15 +83,6 @@ fn rocket() -> _ {
     };
 
     let ip = interface.addr.ip();
-
-    // PCAP
-    // let pcap_conf = conf.clone();
-    // tokio::spawn(async move {
-    //     capture(&interface, &Uuid::new_v4(), &pcap_conf.pcap);
-    // });
-
-    // wait until pcap starts, this needs improvement, needs a feedback from pcap
-    thread::sleep(Duration::from_secs(2));
 
     let (mtx, mrx) = sync_channel::<Message>(1);
     let (stx, srx) = setup_processor::<UdpCommand>();
@@ -163,6 +147,7 @@ fn rocket() -> _ {
                         .send(MpscBase {
                             event: None,
                             exit: true,
+                            ..Default::default()
                         })
                         .unwrap();
                     break 'thread;
