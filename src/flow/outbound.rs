@@ -366,9 +366,14 @@ pub fn process_response_outbound(
                         if matches!(dg.diag_type, Direction::Outbound) {
                             let mut transactions = dg.transactions.get_transactions().unwrap();
 
-                            let tr_len = transactions.clone().len();
-
-                            let mut loop_transaction = transactions.get_mut(tr_len - 2).unwrap();
+                            let invite_idx = transactions
+                                .iter()
+                                .position(|t| matches!(t.tr_type, TransactionType::Invite));
+                            if invite_idx.is_none() {
+                                break;
+                            }
+                            let loop_transaction =
+                                transactions.get_mut(invite_idx.unwrap()).unwrap();
                             if loop_transaction.object.nonce.is_some() {
                                 break;
                             }
@@ -426,8 +431,8 @@ pub fn process_response_outbound(
         StatusCode::SessionProgress => {}
         StatusCode::OK => {
             let mut transaction: Option<String> = None;
-            let connection: Option<IpAddr>;
-            let rtp_port: Option<u16>;
+            let mut connection: Option<IpAddr> = None;
+            let mut rtp_port: Option<u16> = None;
             {
                 let state: Arc<Mutex<State>> = state.clone();
 
@@ -458,16 +463,7 @@ pub fn process_response_outbound(
                                 Some(sdp.unwrap().media_descriptions.first().unwrap().media.port);
 
                             match connection.is_some() && rtp_port.is_some() {
-                                true => {
-                                    // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
-                                    // rtp::event_loop::rtp_event_loop(
-                                    //     &settings.ip,
-                                    //     49152,
-                                    //     state.clone(),
-                                    //     &connection.unwrap(),
-                                    //     rtp_port.unwrap(),
-                                    // );
-                                }
+                                true => {}
                                 false => {}
                             }
 
@@ -571,6 +567,15 @@ pub fn process_response_outbound(
                         exit: false,
                     })
                     .unwrap();
+            }
+            if let (Some(conn), Some(rtp_p)) = (connection, rtp_port) {
+                crate::rtp::event_loop::rtp_event_loop(
+                    &settings.ip,
+                    49152,
+                    state.clone(),
+                    &conn,
+                    rtp_p,
+                );
             }
         }
         StatusCode::ServerTimeOut => {

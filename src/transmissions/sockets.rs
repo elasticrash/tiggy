@@ -24,9 +24,7 @@ pub fn send(socket: &mut UdpSocket, data: &SocketV4, vrb: &Verbosity) {
         vrb,
     );
 
-    socket
-        .send_to(&data.bytes, format!("{}:{}", &data.ip, &data.port))
-        .unwrap();
+    socket.send(&data.bytes).unwrap();
 }
 
 /// Receives a message through upd

@@ -19,10 +19,11 @@ impl Auth for SipOptions {
             "{}:{}:{}",
             &conf.username, &auth_model.realm, &conf.password
         );
+        let ha2_user = self.cld.as_deref().unwrap_or(&self.extension);
         let ha2 = format!(
             "{}:sip:{}@{}:{}",
             &String::from(method),
-            &self.extension,
+            ha2_user,
             &self.sip_server,
             &self.sip_port
         );

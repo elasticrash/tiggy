@@ -24,7 +24,6 @@ const AMPLITUDE: f32 = 0.25;
 #[allow(dead_code)]
 const ALAW_MAX: i16 = 0x0FFF;
 
-#[allow(dead_code)]
 pub fn rtp_event_loop(
     c_connection: &IpAddr,
     port: u16,
@@ -36,10 +35,10 @@ pub fn rtp_event_loop(
     let rtp_connection = *r_connection;
 
     tokio::spawn(async move {
-        let mut socket = UdpSocket::bind(format!("0.0.0.0:{}", rtp_port)).unwrap();
+        let mut socket = UdpSocket::bind(format!("0.0.0.0:{}", port)).unwrap();
         let _io_result = socket.set_read_timeout(Some(Duration::new(1, 0)));
         socket
-            .connect(format!("{}:{}", &connection, &port))
+            .connect(format!("{}:{}", &rtp_connection, &rtp_port))
             .expect("connect function failed");
 
         let mut rtp_buffer = [0_u8; 65535];
