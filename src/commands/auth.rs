@@ -36,10 +36,10 @@ impl Auth for SipOptions {
             self.cnonce = Some(random_string(7));
 
             format!(
-                "{:x}:{}:0000000{}:{}:{}:{:x}",
+                "{:x}:{}:{:08x}:{}:{}:{:x}",
                 md5::compute(ha1),
                 &auth_model.nonce,
-                &self.nc.as_ref().unwrap().to_string(),
+                &self.nc.as_ref().unwrap(),
                 &self.cnonce.as_ref().unwrap().to_string(),
                 &auth_model.qop.as_ref().unwrap().to_string(),
                 md5::compute(ha2)

@@ -1,4 +1,4 @@
-use rsip::headers::{CSeq, Contact, UntypedHeader, UserAgent, Via};
+use rsip::headers::{CSeq, Contact, ToTypedHeader, UntypedHeader, UserAgent, Via};
 use rsip::{Header, SipMessage};
 
 use crate::state::options::SipOptions;
@@ -11,7 +11,7 @@ impl SipOptions {
         via: &Via,
         rr: Vec<&Header>,
         cnt: &Contact,
-        _cseq: &CSeq,
+        cseq: &CSeq,
     ) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
@@ -57,7 +57,7 @@ impl SipOptions {
         headers.push(rsip::headers::CallId::from(self.call_id.as_str()).into());
         headers.push(
             rsip::typed::CSeq {
-                seq: 2,
+                seq: cseq.typed().unwrap().seq,
                 method: rsip::Method::Ack,
             }
             .into(),
@@ -93,7 +93,7 @@ impl SipOptions {
 
         response
     }
-    pub fn create_basic_ack(&self, via: &Via, _cseq: &CSeq) -> SipMessage {
+    pub fn create_basic_ack(&self, via: &Via, cseq: &CSeq) -> SipMessage {
         let mut headers: rsip::Headers = Default::default();
         let base_uri = get_base_uri(&self.extension, &self.sip_server, &self.sip_port);
 
@@ -143,7 +143,7 @@ impl SipOptions {
         headers.push(rsip::headers::CallId::from(self.call_id.as_str()).into());
         headers.push(
             rsip::typed::CSeq {
-                seq: 1,
+                seq: cseq.typed().unwrap().seq,
                 method: rsip::Method::Ack,
             }
             .into(),

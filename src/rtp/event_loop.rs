@@ -15,8 +15,8 @@ use crate::{
 };
 use std::time::Duration;
 
-#[allow(dead_code)]
-const SAMPLE_RATE: f64 = 44_100.0;
+const SAMPLE_RATE: f64 = 8_000.0;
+const SAMPLES_PER_PACKET: usize = 160; // 20ms at 8kHz
 #[allow(dead_code)]
 const FREQUENCY: f64 = 440.0;
 #[allow(dead_code)]
@@ -45,11 +45,10 @@ pub fn rtp_event_loop(
         let mut rtp_buffer = [0_u8; 65535];
         let mut phase = 0.0;
 
-        let mut rng = rand::thread_rng();
-        let n1: u32 = rng.gen();
-        let mut n2: u16 = rng.gen();
-        let n3: u32 = rng.gen();
-        let proper_loop = 0;
+        let (mut timestamp, mut n2, n3): (u32, u16, u32) = {
+            let mut rng = rand::thread_rng();
+            (rng.gen(), rng.gen(), rng.gen())
+        };
 
         info!("target rtp located : {:?}:{:?}", rtp_connection, rtp_port);
         info!("source rtp located : {:?}:{}", connection, 49152);
@@ -58,17 +57,7 @@ pub fn rtp_event_loop(
         'thread: loop {
             let mut send_buffer = [0_u8; 1500];
 
-            let mut state = dialog_state.lock().unwrap();
-            let channel = state.get_rtp_channel().unwrap();
-
-            let mut packet = MutableRtpPacket::new(&mut send_buffer).unwrap();
-            packet.set_version(2);
-            packet.set_payload_type(RtpType::Pcma);
-            packet.set_sequence(n2);
-            packet.set_timestamp(n1);
-            packet.set_ssrc(n3);
-
-            let mut body: [u8; 1405] = [0; 1405];
+            let mut body: [u8; SAMPLES_PER_PACKET] = [0; SAMPLES_PER_PACKET];
             for item in &mut body {
                 // Generating a sine wave sample
                 let mut sample = ((phase * FREQUENCY * 2.0 * PI).sin() as f32 * AMPLITUDE) as i16;
@@ -103,21 +92,49 @@ pub fn rtp_event_loop(
                 *item = output as u8;
             }
 
-            packet.set_payload(&body);
+            let should_exit = {
+                let mut state = dialog_state.lock().unwrap();
+                let channel = state.get_rtp_channel().unwrap();
 
-            channel
-                .0
-                .send(MpscBase {
-                    event: Some(SocketV4 {
-                        ip: rtp_connection.to_string(),
-                        port: rtp_port,
-                        bytes: packet.consume_to_immutable().packet().to_vec(),
-                    }),
-                    exit: false,
-                })
-                .unwrap();
+                let mut packet = MutableRtpPacket::new(&mut send_buffer).unwrap();
+                packet.set_version(2);
+                packet.set_payload_type(RtpType::Pcma);
+                packet.set_sequence(n2);
+                packet.set_timestamp(timestamp);
+                packet.set_ssrc(n3);
+                packet.set_payload(&body);
 
-            n2 = proper_loop + 1;
+                channel
+                    .0
+                    .send(MpscBase {
+                        event: Some(SocketV4 {
+                            ip: rtp_connection.to_string(),
+                            port: rtp_port,
+                            bytes: packet.consume_to_immutable().packet().to_vec(),
+                        }),
+                        exit: false,
+                    })
+                    .unwrap();
+
+                let exit = if let Ok(data) = channel.1.try_recv() {
+                    if !data.exit {
+                        send(&mut socket, &data.event.unwrap(), &Verbosity::Quiet);
+                    }
+                    data.exit
+                } else {
+                    false
+                };
+                exit
+            }; // MutexGuard dropped here
+
+            n2 = n2.wrapping_add(1);
+            timestamp = timestamp.wrapping_add(SAMPLES_PER_PACKET as u32);
+
+            if should_exit {
+                break 'thread;
+            }
+
+            tokio::time::sleep(Duration::from_millis(20)).await;
 
             // peek on the socket, for pending messages
             let mut maybe_msg: Option<Vec<u8>> = None;
@@ -134,13 +151,6 @@ pub fn rtp_event_loop(
             if let Some(..) = maybe_msg {
                 let msg = maybe_msg.unwrap();
                 info!("{}", String::from_utf8_lossy(&msg));
-            }
-
-            if let Ok(data) = channel.1.try_recv() {
-                if data.exit {
-                    break 'thread;
-                }
-                send(&mut socket, &data.event.unwrap(), &Verbosity::Quiet);
             }
         }
     })
