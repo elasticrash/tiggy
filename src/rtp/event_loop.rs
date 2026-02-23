@@ -20,7 +20,7 @@ const SAMPLES_PER_PACKET: usize = 160; // 20ms at 8kHz
 #[allow(dead_code)]
 const FREQUENCY: f64 = 440.0;
 #[allow(dead_code)]
-const AMPLITUDE: f32 = 0.25;
+const AMPLITUDE: f32 = 1024.0; // ~25% of 12-bit ALAW_MAX (0x0FFF)
 #[allow(dead_code)]
 const ALAW_MAX: i16 = 0x0FFF;
 
