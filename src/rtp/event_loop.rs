@@ -24,6 +24,25 @@ const AMPLITUDE: f32 = 1024.0; // ~25% of 12-bit ALAW_MAX (0x0FFF)
 #[allow(dead_code)]
 const ALAW_MAX: i16 = 0x0FFF;
 
+pub fn stop_rtp(state: &Arc<Mutex<State>>) {
+    let mut locked_state = state.lock().unwrap();
+    locked_state.clear_pending_rtp_target();
+
+    if !locked_state.is_rtp_active() {
+        return;
+    }
+
+    locked_state.set_rtp_active(false);
+    let channel = locked_state.get_rtp_channel().unwrap();
+    channel
+        .0
+        .send(MpscBase {
+            event: None,
+            exit: true,
+        })
+        .unwrap();
+}
+
 pub fn rtp_event_loop(
     c_connection: &IpAddr,
     port: u16,
@@ -152,5 +171,8 @@ pub fn rtp_event_loop(
                 info!("{}", String::from_utf8_lossy(&msg));
             }
         }
+
+        let mut state = dialog_state.lock().unwrap();
+        state.set_rtp_active(false);
     })
 }

@@ -1,8 +1,9 @@
 use crate::{
     commands::{auth::Auth, auth::AuthModel, ok::ok, trying::trying},
     config::JSONConfiguration,
+    rtp::event_loop::{rtp_event_loop, stop_rtp},
     state::{
-        dialogs::{Direction, State},
+        dialogs::{Direction, RtpTarget, State},
         options::SelfConfiguration,
     },
     transmissions::sockets::{MpscBase, SocketV4},
@@ -36,7 +37,27 @@ pub fn process_request_inbound(
 
     match request.method {
         rsip::Method::Register => {}
-        rsip::Method::Ack => {}
+        rsip::Method::Ack => {
+            drop(channel);
+            drop(locked_state);
+
+            let pending_rtp_target = {
+                let mut locked_state = state.lock().unwrap();
+                if locked_state.is_rtp_active() {
+                    None
+                } else {
+                    let target = locked_state.take_pending_rtp_target();
+                    if target.is_some() {
+                        locked_state.set_rtp_active(true);
+                    }
+                    target
+                }
+            };
+
+            if let Some(target) = pending_rtp_target {
+                rtp_event_loop(&settings.ip, 49152, state.clone(), &target.ip, target.port);
+            }
+        }
         rsip::Method::Bye => {
             channel
                 .0
@@ -58,12 +79,14 @@ pub fn process_request_inbound(
                     exit: false,
                 })
                 .unwrap();
+
+            drop(channel);
+            drop(locked_state);
+            stop_rtp(state);
         }
         rsip::Method::Cancel => {}
         rsip::Method::Info => {}
         rsip::Method::Invite => {
-            // let connection: Option<IpAddr>;
-
             channel
                 .0
                 .send(MpscBase {
@@ -100,6 +123,9 @@ pub fn process_request_inbound(
                 })
                 .unwrap();
 
+            drop(channel);
+            drop(locked_state);
+
             info!("{}", String::from_utf8_lossy(&request.body).to_string());
             let sdp = sdp_rs::SessionDescription::try_from(
                 String::from_utf8_lossy(&request.body).to_string(),
@@ -116,18 +142,14 @@ pub fn process_request_inbound(
             let rtp_port: Option<u16> =
                 Some(sdp.unwrap().media_descriptions.first().unwrap().media.port);
 
-            match connection.is_some() && rtp_port.is_some() {
-                true => {
-                    // START NEW THREAD ON THE ABOVE TO RECEIVE PACKETS
-                    // rtp::event_loop::rtp_event_loop(
-                    //     &settings.ip,
-                    //     49152,
-                    //     state.clone(),
-                    //     &connection.unwrap(),
-                    //     rtp_port.unwrap(),
-                    // );
-                }
-                false => {}
+            let mut locked_state = state.lock().unwrap();
+            if let (Some(connection), Some(rtp_port)) = (connection, rtp_port) {
+                locked_state.set_pending_rtp_target(Some(RtpTarget {
+                    ip: connection,
+                    port: rtp_port,
+                }));
+            } else {
+                locked_state.clear_pending_rtp_target();
             }
         }
         rsip::Method::Message => {}

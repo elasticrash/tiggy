@@ -50,6 +50,7 @@ use std::{thread, time::Duration};
 // use uuid::Uuid;
 
 // use crate::pcap::capture;
+use crate::rtp::event_loop::stop_rtp;
 use crate::startup::registration::unregister_ua;
 use crate::transmissions::sockets::MpscBase;
 use std::net::IpAddr;
@@ -121,6 +122,7 @@ fn rocket() -> _ {
         .attach(AdHoc::on_shutdown("Shutdown Printer", |_| {
             Box::pin(async move {
                 info!("sending unregister command");
+                stop_rtp(&http_state);
                 unregister_ua(http_state, &exit_config);
                 // this needs improvements, needs feedback from pcap, after SIGINT, to stop capturing packets
                 thread::sleep(Duration::from_secs(3));
