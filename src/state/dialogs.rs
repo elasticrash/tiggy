@@ -5,6 +5,7 @@ use chrono::prelude::*;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
+    net::IpAddr,
     sync::{
         mpsc::{Receiver, Sender},
         Arc, Mutex, MutexGuard, PoisonError,
@@ -27,6 +28,12 @@ pub enum Direction {
     Outbound,
 }
 
+#[derive(Clone)]
+pub struct RtpTarget {
+    pub ip: IpAddr,
+    pub port: u16,
+}
+
 impl Display for Direction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match &self {
@@ -42,6 +49,8 @@ pub struct State {
     reg: Arc<Mutex<Vec<Register>>>,
     sip: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
     rtp: Arc<Mutex<(Sender<UdpCommand>, Receiver<UdpCommand>)>>,
+    rtp_active: bool,
+    pending_rtp_target: Option<RtpTarget>,
 }
 
 impl Display for Dialog {
@@ -82,6 +91,8 @@ impl State {
             reg: Arc::new(Mutex::new(vec![])),
             sip: Arc::new(Mutex::new((s_a, r_a))),
             rtp: Arc::new(Mutex::new((s_b, r_b))),
+            rtp_active: false,
+            pending_rtp_target: None,
         }
     }
 
@@ -100,6 +111,26 @@ impl State {
     #[allow(dead_code)]
     pub fn get_rtp_channel(&mut self) -> Result<MutexGuard<SRUdpCommand>, StateLockError> {
         Ok(self.rtp.lock()?)
+    }
+
+    pub fn is_rtp_active(&self) -> bool {
+        self.rtp_active
+    }
+
+    pub fn set_rtp_active(&mut self, active: bool) {
+        self.rtp_active = active;
+    }
+
+    pub fn set_pending_rtp_target(&mut self, target: Option<RtpTarget>) {
+        self.pending_rtp_target = target;
+    }
+
+    pub fn clear_pending_rtp_target(&mut self) {
+        self.pending_rtp_target = None;
+    }
+
+    pub fn take_pending_rtp_target(&mut self) -> Option<RtpTarget> {
+        self.pending_rtp_target.take()
     }
 }
 

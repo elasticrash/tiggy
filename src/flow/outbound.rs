@@ -7,6 +7,7 @@ use crate::{
     },
     composer::header_extension::CustomHeaderExtension,
     config::JSONConfiguration,
+    rtp::event_loop::{rtp_event_loop, stop_rtp},
     slog::udp_logger,
     state::{
         dialogs::{Dialog, Direction, State, Transactions},
@@ -280,6 +281,10 @@ pub fn process_request_outbound(
                     exit: false,
                 })
                 .unwrap();
+
+            drop(channel);
+            drop(locked_state);
+            stop_rtp(state);
         }
         Method::Cancel => todo!(),
         Method::Info => todo!(),
@@ -569,13 +574,19 @@ pub fn process_response_outbound(
                     .unwrap();
             }
             if let (Some(conn), Some(rtp_p)) = (connection, rtp_port) {
-                crate::rtp::event_loop::rtp_event_loop(
-                    &settings.ip,
-                    49152,
-                    state.clone(),
-                    &conn,
-                    rtp_p,
-                );
+                let should_start = {
+                    let mut locked_state = state.lock().unwrap();
+                    if locked_state.is_rtp_active() {
+                        false
+                    } else {
+                        locked_state.set_rtp_active(true);
+                        true
+                    }
+                };
+
+                if should_start {
+                    rtp_event_loop(&settings.ip, 49152, state.clone(), &conn, rtp_p);
+                }
             }
         }
         StatusCode::ServerTimeOut => {
